@@ -3,62 +3,84 @@ use clap::{Parser, ValueEnum};
 #[derive(ValueEnum, Clone, Debug)]
 #[value(rename_all = "lowercase")]
 pub enum DnsMode {
-    System,
-    DoH,
+    DoT,    // Использовать протокол DoT (DNS over TLS)
+    DoH,    // Использовать протокол DoH (DNS over HTTPS)
+    System, // Использовать системный резолвер (Google DNS)
 }
 
 #[derive(ValueEnum, Clone, Debug)]
 #[value(rename_all = "lowercase")]
 pub enum DnsProvider {
-    Google,
-    Quad9,
-    Cloudflare,
+    Google,     // Использовать Google DNS
+    Quad9,      // Использовать Quad9 DNS
+    Cloudflare, // Использовать Cloudflare DNS
 }
 
 #[derive(ValueEnum, Clone, Debug)]
 #[value(rename_all = "lowercase")]
 pub enum DnsQType {
-    Ipv4,
-    Ipv6,
-    All,
+    Ipv4, // Запрашивать только записи типа A (IPv4)
+    Ipv6, // Запрашивать только аписи типа AAAA (IPv6)
+    All,  // Запрашивать A и AAAA записи
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+#[value(rename_all = "lowercase")]
+pub enum SplitMode {
+    None,     // Не использовать фрагментацию для `TLS Client Hello`
+    Fragment, // Разделять `TLS Client Hello` на фрагменты
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+#[value(rename_all = "lowercase")]
+pub enum TtlStrategy {
+    None, // Использовать стандартный системный TTL (без изменений)
+    Auto, // Автоматический подбор TTL для фейковых пакетов
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+#[value(rename_all = "lowercase")]
+pub enum LogLevel {
+    Off,   // Полностью отключить логирование
+    Error, // Показывать критические сбои
+    Warn,  // Показывать некритичные проблемы
+    Info,  // Показывать основные события системы
+    Debug, // Показывать детали реализации
+    Trace, // Показывать максимальную детализацию
 }
 
 #[derive(Clone, Parser, Debug)]
-#[command(author, version, about = "DPI bypass")]
+#[command(author, version, about = "Omoikane CLI")]
 pub struct CliArgs {
-    /// Порт для прослушивания.
+    /// IP-адрес для прослушивания.
+    #[arg(short = 'a', long = "addr", default_value = "127.0.0.1")]
+    pub addr: String,
+
+    /// Порт для приема входящих соединений.
     #[arg(short = 'p', long = "port", default_value = "8080")]
     pub port: u16,
 
-    /// Режим работы `DNS`: "system" (обычный) или "doh" (DNS-over-HTTPS).
-    #[arg(long = "dns-mode", value_enum, default_value = "system")]
+    /// Уровень детализации логов: "off", "error", "warn", "info", "debug", "trace".
+    #[arg(long = "log-level", default_value = "info")]
+    pub log_level: LogLevel,
+
+    /// Режим работы `DNS`: "system", "doh" (DNS-over-HTTPS), "dot" (DNS-over-TLS).
+    #[arg(value_enum, long = "dns-mode", default_value = "system")]
     pub dns_mode: DnsMode,
 
-    /// Провайдер `DoH`: "cloudflare", "google", "quad9".
-    #[arg(long = "dns-provider", default_value = "cloudflare")]
+    /// Провайдер `DoH`/`DoT`: "google", "cloudflare", "quad9".
+    #[arg(value_enum, long = "dns-provider", default_value = "google")]
     pub dns_provider: DnsProvider,
 
     /// Тип запрашиваемых записей: "ipv4", "ipv6", "all".
-    #[arg(long = "dns-qtype", default_value = "all")]
+    #[arg(value_enum, long = "dns-qtype", default_value = "ipv4")]
     pub dns_qtype: DnsQType,
-    //
-    // /// Метод фрагментации: split, disorder, fake
-    // #[arg(short = 'm', long = "method", default_value = "split")]
-    // pub method: String,
 
-    // /// Размер фрагментации в байтах (для split метода)
-    // #[arg(short = 's', long = "fragment_size", default_value = "32")]
-    // pub fragment_size: usize,
+    /// Способ фрагментации `TLS ClientHello`: "none", "fragment".
+    #[arg(value_enum, long = "https-split-mode", default_value = "none")]
+    pub https_split_mode: SplitMode,
 
-    // /// Добавлять фальшивый SNI
-    // #[arg(short = 'f', long = "fake_sni", default_value = "false")]
-    // pub fake_sni: bool,
-
-    // /// Фальшивый домен для SNI
-    // #[arg(short = 'd', long = "fake_domain", default_value = "www.github.com")]
-    // pub fake_domain: String,
-
-    // /// Блокировать QUIC
-    // #[arg(short = 'q', long = "block_quic", default_value = "true")]
-    // pub block_quic: bool,
+    /// Стратегия работы с `TTL` для фейк пакетов: "none", "auto".
+    #[arg(value_enum, long = "https-fake-ttl", default_value = "none")]
+    pub https_fake_ttl: TtlStrategy,
 }
