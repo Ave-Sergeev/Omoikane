@@ -47,9 +47,11 @@ Active Research & PoC 🦀
   - `--dns-mode` - режим работы DNS: `system`, `doh`, `dot`. (По умолчанию: `system`)
   - `--dns-qtype` - тип запрашиваемых DNS записей: `ipv4`, `ipv6`, `all`. (По умолчанию: `ipv4`)
   - `--dns-provider` - используемый провайдер для DoH/DoT: `google`, `cloudflare`, `quad9`. (По умолчанию: `google`)
+- `HTTP`
+  - `--http-split-mode` - фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
 - `HTTPS`
   - `--https-fake-ttl` - стратегия работы с TTL для фейк пакетов: `none`, `auto`. (По умолчанию: `none`)
-  - `--https-split-mode` - способ фрагментации TLS ClientHello: `none`, `fragment`. (По умолчанию: `none`)
+  - `--https-split-mode` - фрагментация TLS ClientHello: `none`, `fragment`. (По умолчанию: `none`)
 
 ### Быстрый старт
 
@@ -90,19 +92,19 @@ Active Research & PoC 🦀
 
 ### Примеры запуска в CLI
 
-Все параметры имеют значения по умолчанию, поэтому приложение можно запускать без аргументов — в этом случае будут использованы стандартные настройки.  
+Все параметры имеют значения по умолчанию. Если не указывать аргументы, будут использованы стандартные настройки.  
 - **Базовый режим**. Трафик пропускается без модификаций, используется системный DNS-resolver.  
   Минималистичный запуск (используются дефолтные параметры):  
     > ./<path_to_binary_file>
   
   Полная запись (явное указание параметров):  
-    > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "system" --log-level "info" --https-split-mode "none" --https-fake-ttl "none"
+    > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "system" --log-level "info" --http-split-mode "none" --https-split-mode "none" --https-fake-ttl "none"
 
 - **Умеренный режим**. Включает фрагментацию пакетов, Google DoT (IPv4) для обхода простых ограничений.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "dot" --dns-qtype "ipv4" --https-split-mode "fragment"
+  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "dot" --dns-qtype "ipv4" --https-split-mode "none" --https-split-mode "fragment"
 
 - **Максимальный режим**. Использование DNS-over-HTTPS, фрагментации TLS-пакетов и автоматической подстройки TTL.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "all" --https-split-mode "fragment" --https-fake-ttl "auto"
+  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "all" --https-split-mode "fragment" --https-split-mode "fragment" --https-fake-ttl "auto"
 
 ### Детали реализации
 

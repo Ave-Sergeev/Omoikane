@@ -27,8 +27,8 @@ pub enum DnsQType {
 #[derive(ValueEnum, Clone, Debug)]
 #[value(rename_all = "lowercase")]
 pub enum SplitMode {
-    None,     // Не использовать фрагментацию для `TLS Client Hello`
-    Fragment, // Разделять `TLS Client Hello` на фрагменты
+    None,     // Не использовать фрагментацию
+    Fragment, // Разделять на фрагменты
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -75,6 +75,10 @@ pub struct CliArgs {
     /// Тип запрашиваемых записей: "ipv4", "ipv6", "all".
     #[arg(value_enum, long = "dns-qtype", default_value = "ipv4")]
     pub dns_qtype: DnsQType,
+
+    /// Способ фрагментации `HTTP-request`: "none", "fragment".
+    #[arg(value_enum, long = "http-split-mode", default_value = "none")]
+    pub http_split_mode: SplitMode,
 
     /// Способ фрагментации `TLS ClientHello`: "none", "fragment".
     #[arg(value_enum, long = "https-split-mode", default_value = "none")]

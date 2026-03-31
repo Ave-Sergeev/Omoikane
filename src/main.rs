@@ -15,6 +15,7 @@ use tokio::time::Duration;
 
 mod cli_args;
 mod dns;
+mod http;
 mod network_manager;
 mod proxy;
 mod tls;
@@ -125,6 +126,7 @@ fn print_app_info(args: &CliArgs) {
     println!("• {:<19} : {:?}", "DNS MODE", args.dns_mode);
     println!("• {:<19} : {:?}", "DNS QTYPE", args.dns_qtype);
     println!("• {:<19} : {:?}", "DNS PROVIDER", args.dns_provider);
+    println!("• {:<19} : {:?}", "HTTP SPLIT_MODE", args.http_split_mode);
     println!("• {:<19} : {:?}", "HTTPS FAKE_TTL", args.https_fake_ttl);
     println!("• {:<19} : {:?}", "HTTPS SPLIT_MODE", args.https_split_mode);
     println!("• {:<19} : {:?}", "LOG LEVEL", args.log_level);

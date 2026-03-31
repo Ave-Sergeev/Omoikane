@@ -13,8 +13,8 @@ use tokio::net::TcpStream;
 use crate::cli_args::TtlStrategy;
 
 #[derive(Debug, Error)]
-pub enum TlsError {
-    #[error("TLS IO error: {0}")]
+pub enum TlsManglerError {
+    #[error("IO error: {0}")]
     Io(#[from] io::Error),
 
     #[error("Invalid TLS content type: 0x{0:02X}")]
@@ -34,7 +34,7 @@ pub struct TlsMangler;
 
 impl TlsMangler {
     /// Чтение одной полной TLS-записи (Record) из TCP-stream
-    pub async fn read_full_record<R>(reader: &mut R) -> Result<Vec<u8>, TlsError>
+    pub async fn read_full_record<R>(reader: &mut R) -> Result<Vec<u8>, TlsManglerError>
     where
         R: AsyncRead + Unpin,
     {
@@ -46,12 +46,12 @@ impl TlsMangler {
         // 0x16 (22) — это Handshake (куда входит ClientHello)
         // 0x17 (23) — это Application Data (уже зашифрованные данные)
         if header[0] != 0x16 && header[0] != 0x17 {
-            return Err(TlsError::InvalidContentType(header[0]));
+            return Err(TlsManglerError::InvalidContentType(header[0]));
         }
 
         // Проверяем версию протокола
         if header[1] != 0x03 {
-            return Err(TlsError::UnsupportedVersion(header[1], header[2]));
+            return Err(TlsManglerError::UnsupportedVersion(header[1], header[2]));
         }
 
         // Определяем длину полезной нагрузки (байты 3 и 4)
@@ -59,7 +59,7 @@ impl TlsMangler {
 
         // Лимит - TLS ограничивает запись 16384 байтами + накладные расходы
         if payload_len > 17000 {
-            return Err(TlsError::RecordTooLarge(payload_len));
+            return Err(TlsManglerError::RecordTooLarge(payload_len));
         }
 
         let mut record = vec![0u8; 5 + payload_len];
@@ -76,7 +76,7 @@ impl TlsMangler {
         target: &mut TcpStream,
         data: &[u8],
         fake_ttl: u32,
-    ) -> Result<(), TlsError> {
+    ) -> Result<(), TlsManglerError> {
         let original_ttl = {
             let sock = SockRef::from(&*target);
             let old_ttl = sock.ttl_v4()?;
@@ -98,12 +98,12 @@ impl TlsMangler {
         Ok(())
     }
 
-    /// Фрагментация TLS-ClientHello + TTL-Limited Injection
+    /// Фрагментация и отправка TLS-ClientHello + TTL-Limited Injection
     pub async fn fragment_handshake(
         fake_ttl_mode: &TtlStrategy,
         target: &mut TcpStream,
         data: &[u8],
-    ) -> Result<(), TlsError> {
+    ) -> Result<(), TlsManglerError> {
         target.set_nodelay(true)?;
 
         // 0x16 - Handshake, 0x03 - (TLS 1.x)
@@ -183,8 +183,10 @@ impl TlsMangler {
     }
 
     /// Поиск диапазон байт, где лежит SNI внутри TLS-ClientHello
-    fn find_sni_with_range(data: &[u8]) -> Result<(String, std::ops::Range<usize>), TlsError> {
-        let (_, record) = parse_tls_plaintext(data).map_err(|_| TlsError::SniParseError)?;
+    fn find_sni_with_range(
+        data: &[u8],
+    ) -> Result<(String, std::ops::Range<usize>), TlsManglerError> {
+        let (_, record) = parse_tls_plaintext(data).map_err(|_| TlsManglerError::SniParseError)?;
 
         for msg in record.msg {
             if let TlsMessage::Handshake(TlsMessageHandshake::ClientHello(ch)) = msg
@@ -193,7 +195,7 @@ impl TlsMangler {
                 let ext_start_offset = data
                     .windows(ext_data.len())
                     .position(|window| window == ext_data)
-                    .ok_or(TlsError::SniParseError)?;
+                    .ok_or(TlsManglerError::SniParseError)?;
 
                 if let Ok((_, extensions)) = parse_tls_extensions(ext_data) {
                     for ext in extensions {
@@ -201,13 +203,13 @@ impl TlsMangler {
                             for (name_type, name_bytes) in sni_list {
                                 if name_type.0 == 0 {
                                     let hostname = std::str::from_utf8(name_bytes)
-                                        .map_err(|_| TlsError::SniParseError)?
+                                        .map_err(|_| TlsManglerError::SniParseError)?
                                         .to_string();
 
                                     let start = data[ext_start_offset..]
                                         .windows(name_bytes.len())
                                         .position(|w| w == name_bytes)
-                                        .ok_or(TlsError::SniParseError)?
+                                        .ok_or(TlsManglerError::SniParseError)?
                                         + ext_start_offset;
 
                                     return Ok((hostname, start..start + name_bytes.len()));
@@ -218,6 +220,6 @@ impl TlsMangler {
                 }
             }
         }
-        Err(TlsError::SniParseError)
+        Err(TlsManglerError::SniParseError)
     }
 }

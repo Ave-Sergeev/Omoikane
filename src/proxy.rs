@@ -1,3 +1,4 @@
+use crate::http::HttpMangler;
 use crate::{AppState, ProxyTarget};
 use crate::{cli_args::SplitMode, dns::DnsError, tls::TlsMangler};
 use log::debug;
@@ -76,11 +77,11 @@ impl ProxyHandler {
             // Выбор режима обработки TLS-ClientHello
             match state.args.https_split_mode {
                 SplitMode::None => {
-                    // Проксирование без модификаций
+                    // Проксируем без модификаций
                     stream_out.write_all(&tls_record).await?;
                 }
                 SplitMode::Fragment => {
-                    // Применяем фрагментацию с учетом выбранной стратегии TTL
+                    // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
                     TlsMangler::fragment_handshake(
                         &state.args.https_fake_ttl,
                         &mut stream_out,
@@ -91,21 +92,33 @@ impl ProxyHandler {
                 }
             }
         } else {
-            stream_out
-                .write_all(&header_buffer)
-                .await
-                .map_err(|err| format!("Failed to send headers to {host} with error: {err}"))?;
+            match state.args.http_split_mode {
+                SplitMode::None => {
+                    // Проксируем без модификаций
+                    stream_out
+                        .write_all(&header_buffer)
+                        .await
+                        .map_err(|err| format!("Failed to send raw headers to {host}: {err}"))?;
+                }
+                SplitMode::Fragment => {
+                    // Модифицируем HTTP-headers
+                    let modified_headers = HttpMangler::modify_http_headers(&header_buffer)?;
 
+                    // Фрагментируем и отправляем HTTP-headers
+                    HttpMangler::send_split_request(&mut stream_out, &modified_headers)
+                        .await
+                        .map_err(|err| format!("Failed to send split headers to {host}: {err}"))?;
+                }
+            }
+
+            // Доотправляем остатки данных из буфера
             let pending_data = reader.buffer();
-
-            // TODO: Тут будем модифицировать HTTP-заголовок или вставлять мусорные заголовки
             if !pending_data.is_empty() {
                 let len = pending_data.len();
-                // let modified_data = modify_http_headers(pending_data);
-                stream_out.write_all(pending_data).await.map_err(|err| {
-                    format!("Failed to flush pending buffer to {host} with error: {err}")
-                })?;
-
+                stream_out
+                    .write_all(pending_data)
+                    .await
+                    .map_err(|err| format!("Failed to flush pending buffer to {host}: {err}"))?;
                 reader.consume(len);
             }
         }
