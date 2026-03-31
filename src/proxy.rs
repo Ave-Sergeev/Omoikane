@@ -83,7 +83,7 @@ impl ProxyHandler {
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
                     TlsMangler::fragment_handshake(
-                        &state.args.https_fake_ttl,
+                        &state.args,
                         &mut stream_out,
                         &tls_record,
                     )

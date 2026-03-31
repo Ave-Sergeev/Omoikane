@@ -34,8 +34,8 @@ pub enum SplitMode {
 #[derive(ValueEnum, Clone, Debug)]
 #[value(rename_all = "lowercase")]
 pub enum TtlStrategy {
-    None, // Использовать стандартный системный TTL (без изменений)
-    Auto, // Автоматический подбор TTL для фейковых пакетов
+    None,   // Использовать стандартный системный TTL (без изменений)
+    Custom, // Использовать конкретное значение TTL
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -84,7 +84,11 @@ pub struct CliArgs {
     #[arg(value_enum, long = "https-split-mode", default_value = "none")]
     pub https_split_mode: SplitMode,
 
-    /// Стратегия работы с `TTL` для фейк пакетов: "none", "auto".
-    #[arg(value_enum, long = "https-fake-ttl", default_value = "none")]
-    pub https_fake_ttl: TtlStrategy,
+    /// Стратегия работы с `TTL` для фейк пакетов: "none", "custom".
+    #[arg(value_enum, long = "https-fake-ttl-mode", default_value = "none")]
+    pub https_fake_ttl_mode: TtlStrategy,
+
+    /// Конкретное значение `TTL` (для стратегии 'custom').
+    #[arg(long = "https-fake-ttl-value", default_value = "1")]
+    pub https_fake_ttl_value: u8,
 }

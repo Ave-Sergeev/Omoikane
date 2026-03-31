@@ -122,12 +122,13 @@ fn print_app_info(args: &CliArgs) {
     }
 
     println!("\n• {:<19} : {}", "ADDR", args.addr);
-    println!("• {:<19} : {}", "PORT", args.port);
-    println!("• {:<19} : {:?}", "DNS MODE", args.dns_mode);
-    println!("• {:<19} : {:?}", "DNS QTYPE", args.dns_qtype);
-    println!("• {:<19} : {:?}", "DNS PROVIDER", args.dns_provider);
-    println!("• {:<19} : {:?}", "HTTP SPLIT_MODE", args.http_split_mode);
-    println!("• {:<19} : {:?}", "HTTPS FAKE_TTL", args.https_fake_ttl);
-    println!("• {:<19} : {:?}", "HTTPS SPLIT_MODE", args.https_split_mode);
-    println!("• {:<19} : {:?}", "LOG LEVEL", args.log_level);
+    println!("• {:<20}: {}", "PORT", args.port);
+    println!("• {:<20}: {:?}", "DNS MODE", args.dns_mode);
+    println!("• {:<20}: {:?}", "DNS QTYPE", args.dns_qtype);
+    println!("• {:<20}: {:?}", "DNS PROVIDER", args.dns_provider);
+    println!("• {:<20}: {:?}", "HTTP SPLIT_MODE", args.http_split_mode);
+    println!("• {:<20}: {:?}", "HTTPS SPLIT_MODE", args.https_split_mode);
+    println!("• {:<20}: {:?}", "HTTPS FAKE_TTL_MODE", args.https_fake_ttl_mode);
+    println!("• {:<20}: {:?}", "HTTPS FAKE_TTL_VALUE", args.https_fake_ttl_value);
+    println!("• {:<20}: {:?}", "LOG LEVEL", args.log_level);
 }

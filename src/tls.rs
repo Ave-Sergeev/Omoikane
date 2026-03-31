@@ -1,4 +1,5 @@
-use log::debug;
+use crate::cli_args::{CliArgs, TtlStrategy};
+use log::trace;
 use rand::RngExt;
 use socket2::SockRef;
 use std::io;
@@ -9,8 +10,6 @@ use tls_parser::{
 use tokio::io::AsyncRead;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-
-use crate::cli_args::TtlStrategy;
 
 #[derive(Debug, Error)]
 pub enum TlsManglerError {
@@ -71,7 +70,7 @@ impl TlsMangler {
         Ok(record)
     }
 
-    /// Отправка TLS-header с ограниченным TTL (Fake Packet/TTL-Limited Injection)
+    /// Отправка TLS-header с фейк TTL (Fake Packet/TTL-Limited Injection)
     async fn inject_ttl_limited_packet(
         target: &mut TcpStream,
         data: &[u8],
@@ -84,7 +83,7 @@ impl TlsMangler {
             old_ttl
         };
 
-        // Отправляем TLS-header с низким TTL
+        // Отправляем TLS-header с заданным TTL
         // Сервер все же отправит TLS-header благодаря механизму Retransmission, но уже с нормальным TLL
         target.write_all(&data[0..5]).await?;
         target.flush().await?;
@@ -100,7 +99,7 @@ impl TlsMangler {
 
     /// Фрагментация и отправка TLS-ClientHello + TTL-Limited Injection
     pub async fn fragment_handshake(
-        fake_ttl_mode: &TtlStrategy,
+        args: &CliArgs,
         target: &mut TcpStream,
         data: &[u8],
     ) -> Result<(), TlsManglerError> {
@@ -110,31 +109,27 @@ impl TlsMangler {
         if data.len() > 5 && data[0] == 0x16 && data[1] == 0x03 {
             // Пробуем найти SNI и его позицию
             if let Ok((host, sni_range)) = Self::find_sni_with_range(data) {
-                debug!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
+                trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
 
                 // Генерируем случайные параметры сразу
-                let (rand_jitter, rand_offset, rand_chunk_size, rand_ttl) = {
+                let (rand_jitter, rand_chunk_size, rand_offset) = {
                     let mut rng = rand::rng();
                     (
                         rng.random_range(1..7),   // Для Jitter
-                        rng.random_range(0..10),  // Для массива TTL
                         rng.random_range(10..40), // Размер первого фрагмента
                         rng.random_range(1..=5),  // Смещение для критической зоны SNI
                     )
                 };
 
-                match fake_ttl_mode {
-                    TtlStrategy::Auto => {
-                        // Генерируем случайный TTL в диапазоне 1..5 с весами (1: 40%, 2: 30%, 3: 10%, 4: 10%, 5: 10%)
-                        let scope_ttl = [1, 1, 1, 1, 2, 2, 2, 3, 4, 5];
-                        let random_ttl = { scope_ttl[rand_ttl] };
-
-                        // Делаем иньекцию фейк TLS-header (если выбран режим Auto)
-                        Self::inject_ttl_limited_packet(target, &data[0..5], random_ttl).await?;
-                        debug!("TTL-Limited Injection executed (TTL={random_ttl})");
-                    }
+                match args.https_fake_ttl_mode {
                     TtlStrategy::None => {
-                        debug!("TTL-Limited Injection skipped (Mode: None)");
+                        trace!("[{host}] TTL-Limited Injection skipped (Mode: None)");
+                    }
+                    TtlStrategy::Custom => {
+                        let ttl_to_use = u32::from(args.https_fake_ttl_value);
+
+                        Self::inject_ttl_limited_packet(target, &data[0..5], ttl_to_use).await?;
+                        trace!("[{host}] TTL-Limited Injection executed (TTL={ttl_to_use})");
                     }
                 }
 

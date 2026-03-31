@@ -24,11 +24,11 @@ Active Research & PoC 🦀
 На данном этапе проект скорее является Proof of Concept, чем готовым решением.  
 Логика манипуляции TCP-трафиком, архитектура и общий функционал требует доработки и оптимизации.  
 
-Целевая платформа: macOS (aarch64-apple-darwin) — Apple Silicon (процессоры M1/M2/M3/...).  
-Статус: Тестирование и стабильная работа подтверждены только на macOS автора.  
+Целевая платформа: macOS Apple Silicon (`aarch64-apple-darwin`) & Intel (`x86_64-apple-darwin`).  
+Статус: Тестирование и стабильная работа подтверждены только на macOS автора (Apple Silicon/M1).  
 
 **Примечание о разработке**:  
-В данном репозитории не соблюдаются формальные промышленные стандарты ведения Git-истории (Best Practices).  
+В данном репозитории не особо соблюдаются формальные промышленные стандарты ведения Git-истории (Best Practices).  
 Для удобства автора и упрощения навигации по коду большинство коммитов объединяется (squash).
 
 **Символизм**:  
@@ -50,8 +50,9 @@ Active Research & PoC 🦀
 - `HTTP`
   - `--http-split-mode` - фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
 - `HTTPS`
-  - `--https-fake-ttl` - стратегия работы с TTL для фейк пакетов: `none`, `auto`. (По умолчанию: `none`)
   - `--https-split-mode` - фрагментация TLS ClientHello: `none`, `fragment`. (По умолчанию: `none`)
+  - `--https-fake-ttl-mode` - стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
+  - `--https-fake-ttl-value` — значение TTL для режима `custom`. (По умолчанию: `1`, диапазон 1-255)
 
 ### Быстрый старт
 
@@ -103,8 +104,8 @@ Active Research & PoC 🦀
 - **Умеренный режим**. Включает фрагментацию пакетов, Google DoT (IPv4) для обхода простых ограничений.
   > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "dot" --dns-qtype "ipv4" --https-split-mode "none" --https-split-mode "fragment"
 
-- **Максимальный режим**. Использование DNS-over-HTTPS, фрагментации TLS-пакетов и автоматической подстройки TTL.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "all" --https-split-mode "fragment" --https-split-mode "fragment" --https-fake-ttl "auto"
+- **Максимальный режим**. Использование DNS-over-HTTPS, фрагментации TLS-пакетов и кастомной подстройки TTL.
+  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "ipv4" --http-split-mode "fragment" --https-split-mode "fragment" --https-fake-ttl-mode "custom" --https-fake-ttl-value "1"
 
 ### Детали реализации
 
