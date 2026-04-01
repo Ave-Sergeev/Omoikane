@@ -1,4 +1,7 @@
 use clap::{Parser, ValueEnum};
+use std::sync::OnceLock;
+
+static ARGS: OnceLock<CliArgs> = OnceLock::new();
 
 #[derive(ValueEnum, Clone, Debug)]
 #[value(rename_all = "lowercase")]
@@ -60,6 +63,10 @@ pub struct CliArgs {
     #[arg(short = 'p', long = "port", default_value = "8080")]
     pub port: u16,
 
+    /// Режим "тишины": не выводить баннер и информационные сообщения в терминал.
+    #[arg(short = 's', long = "silent")]
+    pub silent: bool,
+
     /// Уровень детализации логов: "off", "error", "warn", "info", "debug", "trace".
     #[arg(short = 'l', long = "log-level", default_value = "info")]
     pub log_level: LogLevel,
@@ -91,4 +98,18 @@ pub struct CliArgs {
     /// Конкретное значение `TTL` (для стратегии 'custom').
     #[arg(long = "https-fake-ttl-value", default_value = "1")]
     pub https_fake_ttl_value: u8,
+}
+
+impl CliArgs {
+    /// Парсинг аргументов командной строки, инициализирование глобального состояния
+    pub fn init() -> Self {
+        let args = Self::parse();
+        let _ = ARGS.set(args.clone());
+        args
+    }
+
+    /// Проверка режима --silent (для макроса)
+    pub fn is_silent() -> bool {
+        ARGS.get().is_some_and(|a| a.silent)
+    }
 }

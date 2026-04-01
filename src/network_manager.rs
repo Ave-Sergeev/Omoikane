@@ -1,3 +1,4 @@
+use crate::silent;
 use std::process::Command;
 use thiserror::Error;
 
@@ -26,25 +27,22 @@ impl NetworkManager {
         let run_cmd = |args: &[&str]| -> Result<(), NetworkError> {
             let status = Command::new("networksetup").args(args).status()?;
             if !status.success() {
-                return Err(NetworkError::CommandFailed(format!(
-                    "Command {:?} failed",
-                    args[0]
-                )));
+                return Err(NetworkError::CommandFailed(format!("Command {:?} failed", args[0])));
             }
             Ok(())
         };
 
         if enable {
-            println!("\nProxy setup for [{interface}]");
+            silent!("\nProxy setup for [{interface}]");
             run_cmd(&["-setwebproxy", &interface, "127.0.0.1", "8080"])?;
-            println!(" ├─ HTTP proxy:  [Enabled]");
+            silent!(" ├─ HTTP proxy:  [Enabled]");
             run_cmd(&["-setsecurewebproxy", &interface, "127.0.0.1", "8080"])?;
-            println!(" └─ HTTPS proxy: [Enabled]");
-            println!("\nPress `CTRL+C` to stop proxy\n");
+            silent!(" └─ HTTPS proxy: [Enabled]");
+            silent!("\nPress `CTRL+C` to stop proxy\n");
         } else {
             run_cmd(&["-setwebproxystate", &interface, "off"])?;
             run_cmd(&["-setsecurewebproxystate", &interface, "off"])?;
-            println!("\nProxy configuration for [{interface}] has been [Disabled]\n");
+            silent!("\nProxy configuration for [{interface}] has been [Disabled]\n");
         }
 
         Ok(())

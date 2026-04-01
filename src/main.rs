@@ -4,7 +4,6 @@ use crate::{
     network_manager::NetworkManager,
     proxy::ProxyHandler,
 };
-use clap::Parser;
 use colored::{Color, Colorize};
 use env_logger::Builder;
 use log::{LevelFilter, error, info, trace, warn};
@@ -18,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 mod cli_args;
 mod dns;
 mod http;
+mod macros;
 mod network_manager;
 mod proxy;
 mod tls;
@@ -46,8 +46,8 @@ pub enum ProxyTarget {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Парсинг CLI-аргументов
-    let args = CliArgs::parse();
+    // Парсинг CLI-аргументов, и сохранение в глобальное состояние
+    let args = CliArgs::init();
 
     // Инициализация Logger
     init_logger(&args.log_level);
@@ -150,13 +150,17 @@ fn init_logger(log_level: &LogLevel) {
         LogLevel::Trace => LevelFilter::Trace,
     };
     Builder::new()
-        .filter_level(log::LevelFilter::Info) // Для всех зависимостей/крейтов
+        .filter_level(LevelFilter::Info) // Для всех зависимостей/крейтов
         .filter_module("omoikane", level) // Для этого проекта
         .init();
 }
 
 /// Отрисовка баннера и текущих настроек в терминале
 fn print_app_info(args: &CliArgs) {
+    if args.silent {
+        return;
+    }
+
     if let Ok(banner) = to_art("OMOIKANE".to_string(), "standard", 0, 0, 0) {
         let colors = [
             Color::BrightCyan,
@@ -173,20 +177,14 @@ fn print_app_info(args: &CliArgs) {
         }
     }
 
-    println!("\n• {:<19} : {}", "ADDR", args.addr);
-    println!("• {:<20}: {}", "PORT", args.port);
-    println!("• {:<20}: {:?}", "DNS MODE", args.dns_mode);
-    println!("• {:<20}: {:?}", "DNS QTYPE", args.dns_qtype);
-    println!("• {:<20}: {:?}", "DNS PROVIDER", args.dns_provider);
-    println!("• {:<20}: {:?}", "HTTP SPLIT_MODE", args.http_split_mode);
-    println!("• {:<20}: {:?}", "HTTPS SPLIT_MODE", args.https_split_mode);
-    println!(
-        "• {:<20}: {:?}",
-        "HTTPS FAKE_TTL_MODE", args.https_fake_ttl_mode
-    );
-    println!(
-        "• {:<20}: {:?}",
-        "HTTPS FAKE_TTL_VALUE", args.https_fake_ttl_value
-    );
-    println!("• {:<20}: {:?}", "LOG LEVEL", args.log_level);
+    println!("\n• {:<22} : {}", "ADDR", args.addr);
+    println!("• {:<22} : {}", "PORT", args.port);
+    println!("• {:<22} : {:?}", "DNS MODE", args.dns_mode);
+    println!("• {:<22} : {:?}", "DNS QTYPE", args.dns_qtype);
+    println!("• {:<22} : {:?}", "DNS PROVIDER", args.dns_provider);
+    println!("• {:<22} : {:?}", "HTTP SPLIT_MODE", args.http_split_mode);
+    println!("• {:<22} : {:?}", "HTTPS SPLIT_MODE", args.https_split_mode);
+    println!("• {:<22} : {:?}", "HTTPS FAKE_TTL_MODE", args.https_fake_ttl_mode);
+    println!("• {:<22} : {:?}", "HTTPS FAKE_TTL_VALUE", args.https_fake_ttl_value);
+    println!("• {:<22} : {:?}", "LOG LEVEL", args.log_level);
 }
