@@ -61,7 +61,7 @@ pub struct CliArgs {
     pub port: u16,
 
     /// Уровень детализации логов: "off", "error", "warn", "info", "debug", "trace".
-    #[arg(long = "log-level", default_value = "info")]
+    #[arg(short = 'l', long = "log-level", default_value = "info")]
     pub log_level: LogLevel,
 
     /// Режим работы `DNS`: "system", "doh" (DNS-over-HTTPS), "dot" (DNS-over-TLS).

@@ -6,4 +6,91 @@
 
 ### Description
 
-...
+This project is a lightweight `Explicit Proxy` written in `Rust`.  
+Due to the language's architectural features, it ensures minimal latency and low system resource consumption.
+
+**Main Objective**:  
+Maintaining the stability of TCP connections in environments with Deep Packet Inspection (DPI) at intermediate network nodes, as well as implementing protection methods against DNS Spoofing and Cache Poisoning attacks.
+
+Target Platform: macOS Apple Silicon (`aarch64-apple-darwin`) & Intel (`x86_64-apple-darwin`).  
+Status: Testing and stable operation have been confirmed only on the author's macOS (Apple Silicon).  
+
+**Current State**:  
+Active Research & PoC 🦀  
+At this stage, the project is more of a `Proof of Concept` than a production-ready solution.  
+The TCP traffic manipulation logic, architecture, and overall functionality require further refinement and optimization.  
+
+**Disclaimer**:  
+This software was developed as part of a Master's thesis and is strictly for research purposes.  
+The development is presented as a `Proof of Concept` (PoC) to investigate mechanisms for ensuring communication resilience when passing through nodes with Deep Packet Inspection (DPI).
+
+The software is provided on an `as is` basis. Its use is permitted for educational and informational purposes only.  
+The author makes no guarantees regarding the tool's performance under specific conditions and bears no responsibility for any direct or indirect damage resulting from the use of this software.
+
+**Development Note**:  
+This repository does not strictly follow formal industry standards for Git history (Best Practices).  
+For the author's convenience and to simplify code navigation, most commits are squashed.
+
+**Symbolism**:  
+The project is named after a Japanese mythological god of intellect, wisdom, and strategy, who restored light to the world by finding a "clever way" where direct action had failed.
+
+### Quick Start
+
+The fastest way to get started is to download the pre-compiled binary for your system:
+1. Go to the [Releases](https://github.com/Ave-Sergeev/Omoikane/releases) page.
+2. Download the archive for your OS.
+3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
+
+### Building from Source
+
+[...]
+
+### CLI Configuration
+
+The service is configured via command-line arguments.
+Available options:
+
+- `APP`
+  - `--addr` - IP address to listen on. (Default: `127.0.0.1`)
+  - `--port` — Port to listen on. (Default: `8080`)
+  - `--log-level` — Logging verbosity level: `off`, `error`, `warn`, `info`, `debug`, `trace`. (Default: `info`)
+- `DNS`
+  - `--dns-mode` — DNS operation mode: `system`, `doh`, `dot`. (Default: `system`)
+  - `--dns-qtype` — DNS record query type: `ipv4`, `ipv6`, `all`. (Default: `ipv4`)
+  - `--dns-provider` — Provider used for DoH/DoT: `google`, `cloudflare`, `quad9`. (Default: `google`)
+- `HTTP`
+  - `--http-split-mode` — HTTP request fragmentation: `none`, `fragment`. (Default: `none`)
+- `HTTPS`
+  - `--https-split-mode` — TLS ClientHello fragmentation: `none`, `fragment`. (Default: `none`)
+  - `--https-fake-ttl-mode` — TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
+  - `--https-fake-ttl-value` — TTL value for `custom` mode. (Default: `1`, range: `1-255`)
+        
+### CLI Usage Examples
+
+All parameters have default values. If no arguments are provided, the standard settings will be used.
+
+- **Basic Mode**. Traffic passes through without modifications, using the system DNS resolver.
+  Minimalist launch (uses default parameters):
+    > ./<path_to_binary_file>
+
+  Full command (explicitly defined parameters):
+    > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "system" --log-level "info" --http-split-mode "none" --https-split-mode "none" --https-fake-ttl "none"
+
+- **Moderate Mode**. Enables packet fragmentation and Google DoT (IPv4) to bypass simple restrictions.
+  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "dot" --dns-qtype "ipv4" --https-split-mode "none" --https-split-mode "fragment"
+
+- **Maximum Mode**. Uses DNS-over-HTTPS, TLS packet fragmentation, and custom TTL tuning.
+  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "ipv4" --http-split-mode "fragment" --https-split-mode "fragment" --https-fake-ttl-mode "custom" --https-fake-ttl-value "1"
+
+### Implementation Details
+
+[...]
+
+### License
+
+The source code of this project is distributed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).  
+This allows for the use, copying, and modification of the code for educational and research purposes.  
+
+### Support the Project
+
+If you found something interesting or useful in this project, or if you simply liked the code, feel free to give it a ⭐ star as a token of appreciation.

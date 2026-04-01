@@ -1,25 +1,83 @@
 use crate::http::HttpMangler;
 use crate::{AppState, ProxyTarget};
 use crate::{cli_args::SplitMode, dns::DnsError, tls::TlsMangler};
-use log::debug;
-use std::{error::Error, sync::Arc};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use log::{debug, trace, warn};
+use std::io::ErrorKind;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, copy_bidirectional};
 use tokio::net::TcpStream;
-use tokio::time::Duration;
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 
+/// Размер буфера для чтения HTTP-заголовков и данных.
 const BUFFER_CAPACITY: usize = 2048;
+
+// Предел неактивности соединения.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Тайм-аут на установку исходящего соединения с целевым сервером (race-connect).
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// TCP Keepalive: время простоя (idle) перед отправкой первой проверки.
+const KEEPALIVE_TIME: Duration = Duration::from_secs(15);
+
+/// TCP Keepalive: интервал между повторными проверками, если нет ответа.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+
+/// TCP Keepalive: количество неудачных попыток до разрыва соединения.
+const KEEPALIVE_RETRIES: u32 = 3;
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ProxyError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Timeout")]
+    Timeout(#[from] tokio::time::error::Elapsed),
+
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
+    #[error("Manipulation failed ({stage}): {details}")]
+    Manipulation {
+        stage: &'static str,
+        details: String,
+    },
+
+    #[error("Relay error to {host}: {source}")]
+    Relay {
+        host: String,
+        source: std::io::Error,
+    },
+
+    #[error("DNS error: {0}")]
+    Dns(#[from] DnsError),
+}
 
 pub struct ProxyHandler;
 
 impl ProxyHandler {
     /// Обработка подключения (TCP-stream) с модификацией и пробросом трафика в обе стороны
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_connection(
         stream_in: TcpStream,
         state: Arc<AppState>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        cancel_token: CancellationToken,
+    ) -> Result<(), ProxyError> {
         stream_in.set_nodelay(true)?;
+
+        // Настройка TCP Keepalive
+        let socket_ref = socket2::SockRef::from(&stream_in);
+        let keepalive = socket2::TcpKeepalive::new()
+            .with_time(KEEPALIVE_TIME)
+            .with_interval(KEEPALIVE_INTERVAL)
+            .with_retries(KEEPALIVE_RETRIES);
+        if let Err(err) = socket_ref.set_tcp_keepalive(&keepalive) {
+            debug!("Failed to set TCP Keepalive: {err}");
+        }
 
         let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, stream_in);
         let mut header_buffer = Vec::new();
@@ -46,10 +104,7 @@ impl ProxyHandler {
         }
 
         // Достаем целевой адрес (host)
-        let target = match Self::extract_target(&header_buffer) {
-            Ok(data) => data,
-            Err(err) => return Err(format!("Host extract error: {err}").into()),
-        };
+        let target = Self::extract_target(&header_buffer)?;
 
         let (host, port, is_https) = match target {
             ProxyTarget::Https { host } => (host, 443, true),
@@ -60,54 +115,61 @@ impl ProxyHandler {
             CONNECT_TIMEOUT,
             state.resolver.race_connect_to_target(&host, port),
         )
-        .await
-        .map_err(|_| DnsError::ConnectionFailed("Timeout".to_string()))??;
+        .await??;
 
         if is_https {
             // Пишем ack для клиента
             let ack = "HTTP/1.1 200 Connection Established\r\n\r\n";
-            reader
-                .write_all(ack.as_bytes())
-                .await
-                .map_err(|err| format!("Failed to send ACK to client: {err}"))?;
+            reader.write_all(ack.as_bytes()).await?;
 
             // Вычитываем полный TLS-ClientHello + проверяем что это вообще он
-            let tls_record = TlsMangler::read_full_record(&mut reader).await?;
+            let tls_record = TlsMangler::read_full_record(&mut reader)
+                .await
+                .map_err(|err| ProxyError::Manipulation {
+                    stage: "TLS Read",
+                    details: err.to_string(),
+                })?;
 
             // Выбор режима обработки TLS-ClientHello
             match state.args.https_split_mode {
                 SplitMode::None => {
-                    // Проксируем без модификаций
                     stream_out.write_all(&tls_record).await?;
                 }
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
-                    TlsMangler::fragment_handshake(
-                        &state.args,
-                        &mut stream_out,
-                        &tls_record,
-                    )
-                    .await
-                    .map_err(|err| format!("Fragmentation/TTL error: {err}"))?;
+                    TlsMangler::fragment_handshake(&state.args, &mut stream_out, &tls_record)
+                        .await
+                        .map_err(|err| ProxyError::Manipulation {
+                            stage: "TLS Fragment",
+                            details: err.to_string(),
+                        })?;
                 }
             }
         } else {
             match state.args.http_split_mode {
                 SplitMode::None => {
-                    // Проксируем без модификаций
-                    stream_out
-                        .write_all(&header_buffer)
-                        .await
-                        .map_err(|err| format!("Failed to send raw headers to {host}: {err}"))?;
+                    stream_out.write_all(&header_buffer).await.map_err(|err| {
+                        ProxyError::Relay {
+                            host: host.clone(),
+                            source: err,
+                        }
+                    })?;
                 }
                 SplitMode::Fragment => {
                     // Модифицируем HTTP-headers
-                    let modified_headers = HttpMangler::modify_http_headers(&header_buffer)?;
+                    let modified_headers = HttpMangler::modify_http_headers(&header_buffer)
+                        .map_err(|err| ProxyError::Manipulation {
+                            stage: "HTTP Mangle",
+                            details: err.to_string(),
+                        })?;
 
                     // Фрагментируем и отправляем HTTP-headers
                     HttpMangler::send_split_request(&mut stream_out, &modified_headers)
                         .await
-                        .map_err(|err| format!("Failed to send split headers to {host}: {err}"))?;
+                        .map_err(|err| ProxyError::Manipulation {
+                            stage: "НTTP Fragment",
+                            details: err.to_string(),
+                        })?;
                 }
             }
 
@@ -118,57 +180,81 @@ impl ProxyHandler {
                 stream_out
                     .write_all(pending_data)
                     .await
-                    .map_err(|err| format!("Failed to flush pending buffer to {host}: {err}"))?;
+                    .map_err(|err| ProxyError::Relay {
+                        host: host.clone(),
+                        source: err,
+                    })?;
                 reader.consume(len);
             }
         }
 
         let mut stream_in = reader;
 
-        if let Err(err) = tokio::io::copy_bidirectional(&mut stream_in, &mut stream_out).await
-            && err.kind() != std::io::ErrorKind::NotConnected
-            && err.kind() != std::io::ErrorKind::BrokenPipe
-        {
-            debug!("Relay finished with error: {err}");
+        let relay_task = copy_bidirectional(&mut stream_in, &mut stream_out);
+
+        match tokio::select! {
+            biased;
+            () = cancel_token.cancelled() => {
+                trace!("Shutdown: stopping relay for {host}");
+                Ok((0, 0))
+            }
+            res = timeout(IDLE_TIMEOUT, relay_task) => res.map_err(|_| {
+                trace!("Connection to {host} timed out (Idle)");
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "Idle timeout")
+            })?,
+        } {
+            Ok((up, down)) => trace!("Relay finish | Up: {up} bytes | Down: {down} bytes"),
+            Err(err) => match err.kind() {
+                ErrorKind::NotConnected | ErrorKind::BrokenPipe | ErrorKind::ConnectionReset => {
+                    trace!("Connection closed by peer");
+                }
+                _ => warn!("Relay error with {host}: {err}"),
+            },
         }
 
         Ok(())
     }
 
     /// Определение целевого адреса (host)
-    fn extract_target(buffer: &[u8]) -> Result<ProxyTarget, Box<dyn Error>> {
+    fn extract_target(buffer: &[u8]) -> Result<ProxyTarget, ProxyError> {
         if buffer.is_empty() {
-            return Err("Empty buffer".into());
+            return Err(ProxyError::BadRequest("Empty buffer".into()));
         }
 
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = httparse::Request::new(&mut headers);
 
-        let status = req.parse(buffer)?;
+        let status = req
+            .parse(buffer)
+            .map_err(|err| ProxyError::BadRequest(err.to_string()))?;
 
         if status.is_partial() {
-            return Err("Incomplete HTTP headers".into());
+            return Err(ProxyError::BadRequest("Incomplete headers".into()));
         }
 
-        let method = req.method.ok_or("Missing HTTP method")?;
+        let method = req
+            .method
+            .ok_or(ProxyError::BadRequest("Missing method".into()))?;
         let is_connect = method == "CONNECT";
 
         let raw_host = if is_connect {
-            req.path.ok_or("Missing path in CONNECT request")?
+            req.path
+                .ok_or(ProxyError::BadRequest("Missing path".into()))?
         } else {
             let host_header = req
                 .headers
                 .iter()
                 .find(|h| h.name.eq_ignore_ascii_case("Host"))
-                .ok_or("Host header not found")?;
+                .ok_or(ProxyError::BadRequest("Host header not found".into()))?;
 
-            std::str::from_utf8(host_header.value)?
+            std::str::from_utf8(host_header.value)
+                .map_err(|e| ProxyError::BadRequest(e.to_string()))?
         };
 
         let host = raw_host
             .split(':')
             .next()
-            .ok_or("Empty host string")?
+            .ok_or_else(|| ProxyError::BadRequest("Empty host".into()))?
             .to_string();
 
         Ok(if is_connect {

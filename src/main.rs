@@ -7,11 +7,13 @@ use crate::{
 use clap::Parser;
 use colored::{Color, Colorize};
 use env_logger::Builder;
-use log::{LevelFilter, debug, error, info};
+use log::{LevelFilter, error, info, trace, warn};
 use std::sync::Arc;
 use text_to_ascii_art::to_art;
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 use tokio::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 mod cli_args;
 mod dns;
@@ -19,6 +21,18 @@ mod http;
 mod network_manager;
 mod proxy;
 mod tls;
+
+/// Таймаут ожидания завершения активных соединений при остановке сервиса.
+/// Предотвращает бесконечное ожидание процесса при закрытии.
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(10);
+
+/// Максимальное время жизни прокси-сессий.
+/// Предотвращает утечку дескрипторов и блокировку семафоров из-за зомби-соединений и зависших потоков.
+const MAX_SESSION_DURATION: Duration = Duration::from_secs(300);
+
+/// Лимит конкурентных соединений для предотвращения исчерпания файловых дескрипторов.
+/// На macOS (soft limit 256) значение 200 оставляет запас для системных нужд, предотвращая ошибку EMFILE (Too many open files).
+const MAX_CONCURRENT_CONNECTIONS: usize = 200;
 
 struct AppState {
     args: CliArgs,
@@ -55,31 +69,69 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("Listener is running on port: {}", &app_state.args.port);
 
-    loop {
-        tokio::select! {
-          accept_result = listener.accept() => {
-            match accept_result {
-                Ok((stream_in, _)) => {
-                    let state_clone = Arc::clone(&app_state);
+    // Ограничение количества одновременных соединений (чтоб не исчерпать файловые дескрипторы)
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_CONNECTIONS));
 
-                    tokio::spawn(async move {
-                      if let Err(err) = ProxyHandler::handle_connection(stream_in, state_clone).await {
-                          debug!("Connection closed: {err}");
-                      }
-                    });
+    let cancel_token = CancellationToken::new();
+    let ctrl_c_token = cancel_token.clone();
+
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        println!("\nShutdown signal received (CTRL+C)\n");
+        ctrl_c_token.cancel();
+    });
+
+    loop {
+        let stream_in = tokio::select! {
+            biased;
+            () = cancel_token.cancelled() => break,
+            res = listener.accept() => {
+                match res {
+                    Ok((stream, _)) => stream,
+                    Err(err) => {
+                        error!("Accept error: {err}");
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
                 }
-              Err(err) => {
-                error!("Failed to accept incoming connection: {err}");
-                tokio::time::sleep(Duration::from_millis(100)).await;
-              }
             }
-          }
-          _ = tokio::signal::ctrl_c() => {
-              println!("\nShutdown signal received (CTRL+C)");
-              break;
-          }
-        }
+        };
+
+        let permit = tokio::select! {
+            biased;
+            () = cancel_token.cancelled() => break,
+            p = semaphore.clone().acquire_owned() => p.expect("Semaphore closed"),
+        };
+
+        let state_clone = Arc::clone(&app_state);
+        let task_token = cancel_token.clone();
+
+        tokio::spawn(async move {
+            let _permit = permit;
+
+            tokio::select! {
+                biased;
+                () = task_token.cancelled() => {
+                    trace!("Session closing due to shutdown...");
+                }
+                _ = tokio::time::timeout(
+                    MAX_SESSION_DURATION,
+                    ProxyHandler::handle_connection(stream_in, state_clone, task_token.clone()),
+                ) => {}
+            }
+        });
     }
+
+    info!("Waiting for all connections to close...");
+    let max_concurrent_conn = u32::try_from(MAX_CONCURRENT_CONNECTIONS)?;
+    let shutdown_wait = semaphore.acquire_many(max_concurrent_conn);
+    if tokio::time::timeout(SHUTDOWN_GRACE_PERIOD, shutdown_wait)
+        .await
+        .is_err()
+    {
+        warn!("Shutdown timed out, forcing exit...");
+    }
+    info!("All connections closed. Shutdown complete.");
 
     // Откат сетевых настроек ОС в исходное состояние
     NetworkManager::set_proxy_mode(false)?;
@@ -128,7 +180,13 @@ fn print_app_info(args: &CliArgs) {
     println!("• {:<20}: {:?}", "DNS PROVIDER", args.dns_provider);
     println!("• {:<20}: {:?}", "HTTP SPLIT_MODE", args.http_split_mode);
     println!("• {:<20}: {:?}", "HTTPS SPLIT_MODE", args.https_split_mode);
-    println!("• {:<20}: {:?}", "HTTPS FAKE_TTL_MODE", args.https_fake_ttl_mode);
-    println!("• {:<20}: {:?}", "HTTPS FAKE_TTL_VALUE", args.https_fake_ttl_value);
+    println!(
+        "• {:<20}: {:?}",
+        "HTTPS FAKE_TTL_MODE", args.https_fake_ttl_mode
+    );
+    println!(
+        "• {:<20}: {:?}",
+        "HTTPS FAKE_TTL_VALUE", args.https_fake_ttl_value
+    );
     println!("• {:<20}: {:?}", "LOG LEVEL", args.log_level);
 }
