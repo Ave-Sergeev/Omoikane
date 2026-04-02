@@ -9,16 +9,22 @@
 This project is a lightweight `Explicit Proxy` written in `Rust`.  
 Due to the language's architectural features, it ensures minimal latency and low system resource consumption.
 
+- No root or administrator privileges are required to run and use the application.
+- All TCP traffic processing occurs locally on your computer.
+- Support for DoH and DoT protocols protects DNS queries from interception and spoofing, ensuring correct address resolution before a connection is established.
+- The tool only processes the session initialization phase (TLS ClientHello, HTTP headers). The main payload is transmitted transparently without interference, minimizing latency and system load.
+- Changes are applied to all new connections immediately upon startup and automatically cease when the process is terminated.
+
 **Main Objective**:  
 Maintaining the stability of TCP connections in environments with Deep Packet Inspection (DPI) at intermediate network nodes, as well as implementing protection methods against DNS Spoofing and Cache Poisoning attacks.
 
 Target Platform: macOS Apple Silicon (`aarch64-apple-darwin`) & Intel (`x86_64-apple-darwin`).  
-Status: Testing and stable operation have been confirmed only on the author's macOS (Apple Silicon).  
+Status: Testing and stable operation confirmed on the author's macOS (Apple Silicon).
 
 **Current State**:  
 Active Research & PoC 🦀  
-At this stage, the project is more of a `Proof of Concept` than a production-ready solution.  
-The TCP traffic manipulation logic, architecture, and overall functionality require further refinement and optimization.  
+Despite its `Proof of Concept` status, the tool is fully functional and ready for use.  
+Key traffic manipulation mechanisms are already implemented and operate stably in the target environment. However, the architecture and individual components are still undergoing active development and optimization.
 
 **Disclaimer**:  
 This software was developed as part of a Master's thesis and is strictly for research purposes.  
@@ -29,7 +35,7 @@ The author makes no guarantees regarding the tool's performance under specific c
 
 **Development Note**:  
 This repository does not strictly follow formal industry standards for Git history (Best Practices).  
-For the author's convenience and to simplify code navigation, most commits are squashed.
+Commit history has been intentionally simplified by the author.
 
 **Symbolism**:  
 The project is named after a Japanese mythological god of intellect, wisdom, and strategy, who restored light to the world by finding a "clever way" where direct action had failed.
@@ -38,12 +44,12 @@ The project is named after a Japanese mythological god of intellect, wisdom, and
 
 The fastest way to get started is to download the pre-compiled binary for your system:
 1. Go to the [Releases](https://github.com/Ave-Sergeev/Omoikane/releases) page.
-2. Download the archive for your OS.
+2. Download the archive for your architecture (Apple Silicon / Intel).
 3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
 
 ### Building from Source
 
-[...]
+Environment setup and build instructions can be found in the [development notes](https://github.com/Ave-Sergeev/Omoikane/blob/main/DEVELOPMENT.md).
 
 ### CLI Configuration
 
@@ -53,6 +59,7 @@ Available options:
 - `APP`
   - `--addr` - IP address to listen on. (Default: `127.0.0.1`)
   - `--port` — Port to listen on. (Default: `8080`)
+  - `--silent` – Hides the banner and informational messages in the terminal. (Default: `enabled`)
   - `--log-level` — Logging verbosity level: `off`, `error`, `warn`, `info`, `debug`, `trace`. (Default: `info`)
 - `DNS`
   - `--dns-mode` — DNS operation mode: `system`, `doh`, `dot`. (Default: `system`)
@@ -84,7 +91,7 @@ All parameters have default values. If no arguments are provided, the standard s
 
 ### Implementation Details
 
-[...]
+Architecture description and key project algorithms can be found in the [development notes](https://github.com/Ave-Sergeev/Omoikane/blob/main/DEVELOPMENT.md).
 
 ### License
 
