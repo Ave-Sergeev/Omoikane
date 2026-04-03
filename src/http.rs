@@ -30,8 +30,7 @@ impl HttpMangler {
             .ok_or(HttpManglerError::MalformedRequest)?;
 
         let (header_part, body_part) = (&data[..header_end], &data[header_end + 4..]);
-        let header_str =
-            std::str::from_utf8(header_part).map_err(|_| HttpManglerError::MalformedRequest)?;
+        let header_str = std::str::from_utf8(header_part).map_err(|_| HttpManglerError::MalformedRequest)?;
         let mut lines = header_str.lines();
 
         let first_line = lines.next().ok_or(HttpManglerError::MalformedRequest)?;
@@ -51,10 +50,13 @@ impl HttpMangler {
                 let trimmed_key = key.trim();
                 if trimmed_key.eq_ignore_ascii_case("Host") {
                     let original_host = val.trim();
-                    // Применение Header Case + Dot Trick
+                    // Применяем Header Case + Dot Trick
                     let scrambled = Self::scramble_host(original_host);
 
-                    let host_keys = ["Host", "host", "HOST", "hOsT", "HoSt", "hosT"];
+                    let host_keys = [
+                        "host", "Host", "hOst", "hoSt", "hosT", "HOst", "HoSt", "HosT", "hOSt", "hOsT", "hoST", "HOSt",
+                        "HoST", "hOST", "HOsT", "HOST",
+                    ];
                     let host_key = host_keys[rand::random_range(0..6)];
 
                     let formatted_host = format!("{host_key}: {scrambled}\r\n");
@@ -81,7 +83,7 @@ impl HttpMangler {
 
         let mut final_data = Vec::with_capacity(data.len() + 128);
 
-        // Применение Space Trick + Absolute URI
+        // Применяем Space Trick + Absolute URI
         let request_line = Self::build_request_line(method, &host, clean_path);
         final_data.extend_from_slice(request_line.as_bytes());
 
@@ -98,10 +100,7 @@ impl HttpMangler {
     }
 
     /// Фрагментация и отправка HTTP-headers
-    pub async fn send_split_request(
-        target: &mut TcpStream,
-        modified_headers: &[u8],
-    ) -> Result<(), HttpManglerError> {
+    pub async fn send_split_request(target: &mut TcpStream, modified_headers: &[u8]) -> Result<(), HttpManglerError> {
         target.set_nodelay(true)?;
 
         if modified_headers.len() < 4 {

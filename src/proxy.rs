@@ -99,7 +99,7 @@ impl ProxyHandler {
             let ack = "HTTP/1.1 200 Connection Established\r\n\r\n";
             reader.write_all(ack.as_bytes()).await?;
 
-            // Вычитываем полный TLS-ClientHello + проверяем что это вообще он
+            // Вычитываем полную TLS-запись (ожидаем ClientHello)
             let tls_record =
                 TlsMangler::read_full_record(&mut reader)
                     .await

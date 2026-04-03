@@ -64,7 +64,7 @@ If a parameter is not specified, the values from `config.yaml` or default values
   - `--addr` - IP address to listen on. (Default: `127.0.0.1`)
   - `--port` - Port to listen on. (Default: `8080`)
   - `--config` - Path to the configuration file (YAML). (Default: `not set`)
-  - `--silent` - Hides the banner and informational messages in the terminal. (Default: `enabled`)
+  - `--silent` - Hides the banner and informational messages in the terminal: 'true', 'false'. (Default: `false`)
   - `--log-level` - Logging verbosity level: `off`, `error`, `warn`, `info`, `debug`, `trace`. (Default: `info`)
 - `DNS`
   - `--dns-mode` - DNS operation mode: `system`, `doh`, `dot`. (Default: `system`)
@@ -79,20 +79,24 @@ If a parameter is not specified, the values from `config.yaml` or default values
         
 ### CLI Usage Examples
 
-All parameters have default values. If no arguments are provided, the standard settings will be used.
+All parameters have default values. If no arguments are provided, the standard settings will be used.  
+Network conditions vary by provider. If the default settings don't work for you, you'll need to experiment with the parameters to find the right combination for your specific case.
 
-- **Basic Mode**. Traffic passes through without modifications, using the system DNS resolver.
+- **Silent Mode:** Suppresses banner output and informational messages. Recommended for background processes or service mode.
+  > ./<path_to_binary_file> --silent
+
+- **Basic Mode:** Traffic passes through without modifications, using the system DNS resolver.
   Minimalist launch (uses default parameters):
     > ./<path_to_binary_file>
 
   Full command (explicitly defined parameters):
-    > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "system" --log-level "info" --http-split-mode "none" --https-split-mode "none" --https-fake-ttl "none"
+    > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
 
-- **Moderate Mode**. Enables packet fragmentation and Google DoT (IPv4) to bypass simple restrictions.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "dot" --dns-qtype "ipv4" --https-split-mode "none" --https-split-mode "fragment"
+- **Moderate Mode:** Enables packet fragmentation and Google DoT (IPv4) to bypass simple restrictions.
+  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode dot --dns-qtype ipv4 --http-split-mode none --https-split-mode fragment
 
-- **Maximum Mode**. Uses DNS-over-HTTPS, TLS packet fragmentation, and custom TTL tuning.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "ipv4" --http-split-mode "fragment" --https-split-mode "fragment" --https-fake-ttl-mode "custom" --https-fake-ttl-value "1"
+- **Maximum Mode:** Uses DNS-over-HTTPS, TLS packet fragmentation, and custom TTL tuning.
+  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode doh --dns-provider cloudflare --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
 
 ### Implementation Details
 

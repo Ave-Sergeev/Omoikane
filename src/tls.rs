@@ -38,10 +38,8 @@ impl TlsMangler {
         let mut header = [0u8; 5];
         reader.read_exact(&mut header).await?;
 
-        // Проверяем тип контента
-        // 0x16 (22) — Handshake (куда входит ClientHello)
-        // 0x17 (23) — Application Data (уже зашифрованные данные)
-        if header[0] != 0x16 && header[0] != 0x17 {
+        // Проверяем тип контента (0x16 (22) — Handshake)
+        if header[0] != 0x16 {
             return Err(TlsManglerError::InvalidContentType(header[0]));
         }
 
@@ -70,11 +68,21 @@ impl TlsMangler {
         data: &[u8],
         fake_ttl: u32,
     ) -> Result<(), TlsManglerError> {
+        let peer_addr = target.peer_addr()?;
+        let is_ipv4 = peer_addr.is_ipv4();
+
         let original_ttl = {
-            let sock = SockRef::from(&*target);
-            let old_ttl = sock.ttl_v4()?;
-            sock.set_ttl_v4(fake_ttl)?;
-            old_ttl
+            let sock = SockRef::from(&target);
+
+            if is_ipv4 {
+                let old_ttl = sock.ttl_v4()?;
+                sock.set_ttl_v4(fake_ttl)?;
+                old_ttl
+            } else {
+                let old_ttl = sock.unicast_hops_v6()?;
+                sock.set_unicast_hops_v6(fake_ttl)?;
+                old_ttl
+            }
         };
 
         // Отправляем TLS-header с заданным TTL
@@ -84,7 +92,11 @@ impl TlsMangler {
 
         {
             let sock = SockRef::from(&*target);
-            sock.set_ttl_v4(original_ttl)?;
+            if is_ipv4 {
+                sock.set_ttl_v4(original_ttl)?;
+            } else {
+                sock.set_unicast_hops_v6(original_ttl)?;
+            }
         }
 
         Ok(())
@@ -113,6 +125,9 @@ impl TlsMangler {
                     )
                 };
 
+                let mut current_pos = 0;
+                let total_len = data.len();
+
                 match args.https_fake_ttl_mode {
                     TtlStrategy::None => {
                         trace!("[{host}] TTL-Limited Injection skipped (Mode: None)");
@@ -121,14 +136,13 @@ impl TlsMangler {
                         let ttl_to_use = u32::from(args.https_fake_ttl_value);
 
                         Self::inject_ttl_limited_packet(target, &data[0..5], ttl_to_use).await?;
+                        current_pos = 5;
                         trace!("[{host}] TTL-Limited Injection executed (TTL={ttl_to_use})");
                     }
                 }
 
-                let current_pos = 5;
-                let total_len = data.len();
                 // Определяем границы критической зоны вокруг SNI для фрагментации
-                let mut min_critical_zone = sni_range.start.saturating_sub(rand_offset);
+                let mut min_critical_zone = sni_range.start.saturating_sub(rand_offset).max(current_pos);
                 let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_offset);
 
                 // Отправляем данные от заголовка до начала критической зоны SNI
@@ -157,11 +171,11 @@ impl TlsMangler {
 
                 return Ok(());
             }
-        } else {
-            // Отправляем данные без изменений если это не TLS-handshake, или SNI не найден
-            target.write_all(data).await?;
-            target.flush().await?;
         }
+
+        // Отправляем данные без изменений если это не TLS-handshake, или SNI не найден
+        target.write_all(data).await?;
+        target.flush().await?;
 
         Ok(())
     }
@@ -171,13 +185,8 @@ impl TlsMangler {
         let (_, record) = parse_tls_plaintext(data).map_err(|_| TlsManglerError::SniParseError)?;
 
         for msg in record.msg {
-            if let TlsMessage::Handshake(TlsMessageHandshake::ClientHello(ch)) = msg
-                && let Some(ext_data) = ch.ext
-            {
-                let ext_start_offset = data
-                    .windows(ext_data.len())
-                    .position(|window| window == ext_data)
-                    .ok_or(TlsManglerError::SniParseError)?;
+            if let TlsMessage::Handshake(TlsMessageHandshake::ClientHello(ch)) = msg {
+                let ext_data = ch.ext.ok_or(TlsManglerError::SniParseError)?;
 
                 if let Ok((_, extensions)) = parse_tls_extensions(ext_data) {
                     for ext in extensions {
@@ -188,13 +197,13 @@ impl TlsMangler {
                                         .map_err(|_| TlsManglerError::SniParseError)?
                                         .to_string();
 
-                                    let start = data[ext_start_offset..]
-                                        .windows(name_bytes.len())
-                                        .position(|w| w == name_bytes)
-                                        .ok_or(TlsManglerError::SniParseError)?
-                                        + ext_start_offset;
+                                    let start_offset =
+                                        unsafe { name_bytes.as_ptr().offset_from(data.as_ptr()) }.cast_unsigned();
+                                    let range = start_offset..start_offset + name_bytes.len();
 
-                                    return Ok((hostname, start..start + name_bytes.len()));
+                                    if range.end <= data.len() {
+                                        return Ok((hostname, range));
+                                    }
                                 }
                             }
                         }
@@ -202,6 +211,7 @@ impl TlsMangler {
                 }
             }
         }
+
         Err(TlsManglerError::SniParseError)
     }
 }

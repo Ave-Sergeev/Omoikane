@@ -63,7 +63,7 @@ Active Research & PoC 🦀
   - `--addr` - ip-адрес для прослушивания. (По умолчанию: `127.0.0.1`)
   - `--port` - порт для прослушивания. (По умолчанию: `8080`)
   - `--config` - путь к файлу конфигурации (YAML). (По умолчанию: `не указан`)
-  - `--silent` - настройка скрытия баннера и информационных сообщений в терминале. (По умолчанию: `отображение включено`)
+  - `--silent` - настройка скрытия баннера и информационных сообщений в терминале: 'true', 'false'. (По умолчанию: `false`)
   - `--log-level` - уровень детализации логов: `off`, `error`, `warn`, `info`, `debug`, `trace`. (По умолчанию: `info`)
 - `DNS`
   - `--dns-mode` - режим работы DNS: `system`, `doh`, `dot`. (По умолчанию: `system`)
@@ -78,19 +78,25 @@ Active Research & PoC 🦀
 
 ### Примеры запуска в CLI
 
-Все параметры имеют значения по умолчанию. Если не указывать аргументы, будут использованы стандартные настройки.  
-- **Базовый режим**. Трафик пропускается без модификаций, используется системный DNS-resolver.  
+Все параметры имеют значения по умолчанию.   
+Сетевые условия у каждого провайдера индивидуальны.  
+Если стандартные настройки не дают нужного результата, необходимо «играться» с параметрами, подбирая рабочую комбинацию под конкретно ваш случай.
+
+- **Скрытый режим:** Отключает вывод баннера и информационных сообщений в терминал. Полезно при работе в фоне.
+  > ./<path_to_binary_file> --silent
+
+- **Базовый режим:** Трафик пропускается без модификаций, используется системный DNS-resolver.  
   Минималистичный запуск (используются дефолтные параметры):  
     > ./<path_to_binary_file>
   
   Полная запись (явное указание параметров):  
-    > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "system" --log-level "info" --http-split-mode "none" --https-split-mode "none" --https-fake-ttl "none"
+    > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
 
-- **Умеренный режим**. Включает фрагментацию пакетов, Google DoT (IPv4) для обхода простых ограничений.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "dot" --dns-qtype "ipv4" --https-split-mode "none" --https-split-mode "fragment"
+- **Умеренный режим:**. Включает фрагментацию пакетов, Google DoT (IPv4) для обхода простых ограничений.
+  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode dot --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment
 
-- **Максимальный режим**. Использование DNS-over-HTTPS, фрагментации TLS-пакетов и кастомной подстройки TTL.
-  > ./<path_to_binary_file> -a "127.0.0.1" -p "8080" --dns-mode "doh" --dns-provider "cloudflare" --dns-qtype "ipv4" --http-split-mode "fragment" --https-split-mode "fragment" --https-fake-ttl-mode "custom" --https-fake-ttl-value "1"
+- **Максимальный режим:**. Использование DNS-over-HTTPS, фрагментация пакетов и кастомная подстройка TTL.
+  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode doh --dns-provider cloudflare --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
 
 ### Детали реализации
 

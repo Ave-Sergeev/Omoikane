@@ -88,7 +88,7 @@ pub struct RawCliArgs {
     pub port: Option<u16>,
 
     /// Режим "тишины": не выводить баннер и информационные сообщения в терминал.
-    #[arg(short = 's', long = "silent", help_heading = "APP")]
+    #[arg(short = 's', long = "silent", num_args = 0..=1, default_missing_value = "true", value_parser = clap::value_parser!(bool), help_heading = "APP")]
     #[serde(rename = "args.silent", skip_serializing_if = "Option::is_none")]
     pub silent: Option<bool>,
 
