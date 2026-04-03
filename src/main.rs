@@ -1,8 +1,9 @@
 use crate::{
-    cli_args::{CliArgs, LogLevel},
     dns::DnsResolver,
     network_manager::NetworkManager,
     proxy::ProxyHandler,
+    settings::Settings,
+    settings::{CliArgs, LogLevel},
 };
 use colored::{Color, Colorize};
 use env_logger::Builder;
@@ -14,28 +15,16 @@ use tokio::sync::Semaphore;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-mod cli_args;
 mod dns;
 mod http;
 mod macros;
 mod network_manager;
 mod proxy;
+mod settings;
 mod tls;
 
-/// Таймаут ожидания завершения активных соединений при остановке сервиса.
-/// Предотвращает бесконечное ожидание процесса при закрытии.
-const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(10);
-
-/// Максимальное время жизни прокси-сессий.
-/// Предотвращает утечку дескрипторов и блокировку семафоров из-за зомби-соединений и зависших потоков.
-const MAX_SESSION_DURATION: Duration = Duration::from_secs(300);
-
-/// Лимит конкурентных соединений для предотвращения исчерпания файловых дескрипторов.
-/// На macOS (soft limit 256) значение 200 оставляет запас для системных нужд, предотвращая ошибку EMFILE (Too many open files).
-const MAX_CONCURRENT_CONNECTIONS: usize = 200;
-
 struct AppState {
-    args: CliArgs,
+    settings: Settings,
     resolver: DnsResolver,
 }
 
@@ -46,31 +35,37 @@ pub enum ProxyTarget {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Парсинг CLI-аргументов, и сохранение в глобальное состояние
-    let args = CliArgs::init();
+    // Загрузка конфигурации (CliArgs, YAML)
+    let settings = Settings::new()?;
+
+    let args = &settings.args;
+    let engine = &settings.engine;
+    let max_conns = engine.max_concurrent_connections;
+    let session_duration = Duration::from_secs(engine.max_session_duration_secs);
+    let shutdown_timeout = Duration::from_secs(engine.shutdown_grace_period_secs);
 
     // Инициализация Logger
     init_logger(&args.log_level);
 
-    // Отрисовка баннера и текущих настроек в терминал
-    print_app_info(&args);
+    // Отрисовка баннера и текущих настроек в терминале
+    print_app_info(args);
 
     // Применение сетевых настроек на уровне ОС
     NetworkManager::set_proxy_mode(true)?;
 
-    // Инициализация DNS-resolver на основе CLI аргументов
+    // Инициализация DNS-resolver
     let resolver = DnsResolver::new(&args.dns_mode, &args.dns_qtype, &args.dns_provider);
 
     // Создание Shared-State приложения
-    let app_state = Arc::new(AppState { args, resolver });
+    let app_state = Arc::new(AppState { settings, resolver });
 
     // Инициализация TCP-listener для обработки входящих подключений
-    let addr = format!("{}:{}", &app_state.args.addr, &app_state.args.port);
+    let addr = format!("{}:{}", &app_state.settings.args.addr, &app_state.settings.args.port);
     let listener = TcpListener::bind(addr).await?;
-    info!("Listener is running on port: {}", &app_state.args.port);
+    info!("Listener is running on port: {}", &app_state.settings.args.port);
 
     // Ограничение количества одновременных соединений (чтоб не исчерпать файловые дескрипторы)
-    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_CONNECTIONS));
+    let semaphore = Arc::new(Semaphore::new(max_conns));
 
     let cancel_token = CancellationToken::new();
     let ctrl_c_token = cancel_token.clone();
@@ -115,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
                     trace!("Session closing due to shutdown...");
                 }
                 _ = tokio::time::timeout(
-                    MAX_SESSION_DURATION,
+                    session_duration,
                     ProxyHandler::handle_connection(stream_in, state_clone, task_token.clone()),
                 ) => {}
             }
@@ -123,12 +118,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("Waiting for all connections to close...");
-    let max_concurrent_conn = u32::try_from(MAX_CONCURRENT_CONNECTIONS)?;
+    let max_concurrent_conn = u32::try_from(max_conns)?;
     let shutdown_wait = semaphore.acquire_many(max_concurrent_conn);
-    if tokio::time::timeout(SHUTDOWN_GRACE_PERIOD, shutdown_wait)
-        .await
-        .is_err()
-    {
+    if tokio::time::timeout(shutdown_timeout, shutdown_wait).await.is_err() {
         warn!("Shutdown timed out, forcing exit...");
     }
     info!("All connections closed. Shutdown complete.");
@@ -150,8 +142,8 @@ fn init_logger(log_level: &LogLevel) {
         LogLevel::Trace => LevelFilter::Trace,
     };
     Builder::new()
-        .filter_level(LevelFilter::Info) // Для всех зависимостей/крейтов
-        .filter_module("omoikane", level) // Для этого проекта
+        .filter_level(LevelFilter::Info) // Для зависимостей/крейтов
+        .filter_module("omoikane", level)
         .init();
 }
 

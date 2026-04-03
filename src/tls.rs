@@ -1,12 +1,10 @@
-use crate::cli_args::{CliArgs, TtlStrategy};
+use crate::settings::{CliArgs, TtlStrategy};
 use log::trace;
 use rand::RngExt;
 use socket2::SockRef;
 use std::io;
 use thiserror::Error;
-use tls_parser::{
-    TlsExtension, TlsMessage, TlsMessageHandshake, parse_tls_extensions, parse_tls_plaintext,
-};
+use tls_parser::{TlsExtension, TlsMessage, TlsMessageHandshake, parse_tls_extensions, parse_tls_plaintext};
 use tokio::io::AsyncRead;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -37,13 +35,12 @@ impl TlsMangler {
     where
         R: AsyncRead + Unpin,
     {
-        // Читаем заголовок (5 байт)
         let mut header = [0u8; 5];
         reader.read_exact(&mut header).await?;
 
-        // Проверяем тип контента (Content Type)
-        // 0x16 (22) — это Handshake (куда входит ClientHello)
-        // 0x17 (23) — это Application Data (уже зашифрованные данные)
+        // Проверяем тип контента
+        // 0x16 (22) — Handshake (куда входит ClientHello)
+        // 0x17 (23) — Application Data (уже зашифрованные данные)
         if header[0] != 0x16 && header[0] != 0x17 {
             return Err(TlsManglerError::InvalidContentType(header[0]));
         }
@@ -53,7 +50,6 @@ impl TlsMangler {
             return Err(TlsManglerError::UnsupportedVersion(header[1], header[2]));
         }
 
-        // Определяем длину полезной нагрузки (байты 3 и 4)
         let payload_len = u16::from_be_bytes([header[3], header[4]]) as usize;
 
         // Лимит - TLS ограничивает запись 16384 байтами + накладные расходы
@@ -62,9 +58,7 @@ impl TlsMangler {
         }
 
         let mut record = vec![0u8; 5 + payload_len];
-        // Копируем заголовок в начало
         record[..5].copy_from_slice(&header);
-        // Читаем остальное сразу в срез вектора
         reader.read_exact(&mut record[5..]).await?;
 
         Ok(record)
@@ -84,11 +78,10 @@ impl TlsMangler {
         };
 
         // Отправляем TLS-header с заданным TTL
-        // Сервер все же отправит TLS-header благодаря механизму Retransmission, но уже с нормальным TLL
+        // Сервер переотправит TLS-header благодаря механизму Retransmission, но уже с нормальным TLL
         target.write_all(&data[0..5]).await?;
         target.flush().await?;
 
-        // Возвращаем исходный TTL
         {
             let sock = SockRef::from(&*target);
             sock.set_ttl_v4(original_ttl)?;
@@ -111,7 +104,6 @@ impl TlsMangler {
             if let Ok((host, sni_range)) = Self::find_sni_with_range(data) {
                 trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
 
-                // Генерируем случайные параметры сразу
                 let (rand_jitter, rand_chunk_size, rand_offset) = {
                     let mut rng = rand::rng();
                     (
@@ -141,21 +133,18 @@ impl TlsMangler {
 
                 // Отправляем данные от заголовка до начала критической зоны SNI
                 if min_critical_zone > current_pos {
-                    target
-                        .write_all(&data[current_pos..min_critical_zone])
-                        .await?;
+                    target.write_all(&data[current_pos..min_critical_zone]).await?;
                     target.flush().await?;
                 }
 
                 // Фрагментируем критическую зону (SNI + окрестности)
                 while min_critical_zone < max_critical_zone {
-                    let end_pos =
-                        std::cmp::min(min_critical_zone + rand_chunk_size, max_critical_zone);
+                    let end_pos = std::cmp::min(min_critical_zone + rand_chunk_size, max_critical_zone);
 
                     target.write_all(&data[min_critical_zone..end_pos]).await?;
                     target.flush().await?;
 
-                    // Добавляем Jitter для борьбы с тайминг-анализом
+                    // Добавляем Jitter для борьбы с тайм-анализом
                     tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
                     min_critical_zone = end_pos;
                 }
@@ -178,9 +167,7 @@ impl TlsMangler {
     }
 
     /// Поиск диапазон байт, где лежит SNI внутри TLS-ClientHello
-    fn find_sni_with_range(
-        data: &[u8],
-    ) -> Result<(String, std::ops::Range<usize>), TlsManglerError> {
+    fn find_sni_with_range(data: &[u8]) -> Result<(String, std::ops::Range<usize>), TlsManglerError> {
         let (_, record) = parse_tls_plaintext(data).map_err(|_| TlsManglerError::SniParseError)?;
 
         for msg in record.msg {

@@ -44,33 +44,38 @@ The project is named after a Japanese mythological god of intellect, wisdom, and
 
 The fastest way to get started is to download the pre-compiled binary for your system:
 1. Go to the [Releases](https://github.com/Ave-Sergeev/Omoikane/releases) page.
-2. Download the archive for your architecture (Apple Silicon / Intel).
+2. Download the version for your macOS architecture (Apple Silicon or Intel).
 3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
 
 ### Building from Source
 
 Environment setup and build instructions can be found in the [development notes](https://github.com/Ave-Sergeev/Omoikane/blob/main/DEVELOPMENT.md).
 
-### CLI Configuration
+### Configuration
 
-The service is configured via command-line arguments.
-Available options:
+The service configuration is flexible and supports two priority levels:  
+- CLI Arguments — used for quick startup and overriding key parameters. These have the highest priority.
+- Configuration File (config.yaml) — intended for fine-tuning internal proxy-engine parameters that rarely require immediate changes. A configuration template with example settings (config_example.yaml) is located in the project root.
+
+**Available CLI Arguments**:  
+If a parameter is not specified, the values from `config.yaml` or default values will be used.
 
 - `APP`
   - `--addr` - IP address to listen on. (Default: `127.0.0.1`)
-  - `--port` — Port to listen on. (Default: `8080`)
-  - `--silent` – Hides the banner and informational messages in the terminal. (Default: `enabled`)
-  - `--log-level` — Logging verbosity level: `off`, `error`, `warn`, `info`, `debug`, `trace`. (Default: `info`)
+  - `--port` - Port to listen on. (Default: `8080`)
+  - `--config` - Path to the configuration file (YAML). (Default: `not set`)
+  - `--silent` - Hides the banner and informational messages in the terminal. (Default: `enabled`)
+  - `--log-level` - Logging verbosity level: `off`, `error`, `warn`, `info`, `debug`, `trace`. (Default: `info`)
 - `DNS`
-  - `--dns-mode` — DNS operation mode: `system`, `doh`, `dot`. (Default: `system`)
-  - `--dns-qtype` — DNS record query type: `ipv4`, `ipv6`, `all`. (Default: `ipv4`)
-  - `--dns-provider` — Provider used for DoH/DoT: `google`, `cloudflare`, `quad9`. (Default: `google`)
+  - `--dns-mode` - DNS operation mode: `system`, `doh`, `dot`. (Default: `system`)
+  - `--dns-qtype` - DNS record query type: `ipv4`, `ipv6`, `all`. (Default: `ipv4`)
+  - `--dns-provider` - Provider used for DoH/DoT: `google`, `cloudflare`, `quad9`. (Default: `google`)
 - `HTTP`
-  - `--http-split-mode` — HTTP request fragmentation: `none`, `fragment`. (Default: `none`)
+  - `--http-split-mode` - HTTP request fragmentation: `none`, `fragment`. (Default: `none`)
 - `HTTPS`
-  - `--https-split-mode` — TLS ClientHello fragmentation: `none`, `fragment`. (Default: `none`)
-  - `--https-fake-ttl-mode` — TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
-  - `--https-fake-ttl-value` — TTL value for `custom` mode. (Default: `1`, range: `1-255`)
+  - `--https-split-mode` - TLS ClientHello fragmentation: `none`, `fragment`. (Default: `none`)
+  - `--https-fake-ttl-mode` - TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
+  - `--https-fake-ttl-value` - TTL value for `custom` mode. (Default: `1`, range: `1-255`)
         
 ### CLI Usage Examples
 

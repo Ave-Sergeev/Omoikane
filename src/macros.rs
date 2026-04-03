@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! silent {
     ($($arg:tt)*) => {{
-        if !$crate::cli_args::CliArgs::is_silent() {
+        if !$crate::settings::Settings::is_silent() {
             println!($($arg)*);
         }
     }};

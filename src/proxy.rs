@@ -1,6 +1,6 @@
 use crate::http::HttpMangler;
 use crate::{AppState, ProxyTarget};
-use crate::{cli_args::SplitMode, dns::DnsError, tls::TlsMangler};
+use crate::{dns::DnsError, settings::SplitMode, tls::TlsMangler};
 use log::{debug, trace, warn};
 use std::io::ErrorKind;
 use std::sync::Arc;
@@ -9,24 +9,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, copy_bidirectional};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
-
-/// Размер буфера для чтения HTTP-заголовков и данных.
-const BUFFER_CAPACITY: usize = 2048;
-
-// Предел неактивности соединения.
-const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Тайм-аут на установку исходящего соединения с целевым сервером (race-connect).
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// TCP Keepalive: время простоя (idle) перед отправкой первой проверки.
-const KEEPALIVE_TIME: Duration = Duration::from_secs(15);
-
-/// TCP Keepalive: интервал между повторными проверками, если нет ответа.
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
-
-/// TCP Keepalive: количество неудачных попыток до разрыва соединения.
-const KEEPALIVE_RETRIES: u32 = 3;
 
 use thiserror::Error;
 
@@ -42,16 +24,10 @@ pub enum ProxyError {
     BadRequest(String),
 
     #[error("Manipulation failed ({stage}): {details}")]
-    Manipulation {
-        stage: &'static str,
-        details: String,
-    },
+    Manipulation { stage: &'static str, details: String },
 
     #[error("Relay error to {host}: {source}")]
-    Relay {
-        host: String,
-        source: std::io::Error,
-    },
+    Relay { host: String, source: std::io::Error },
 
     #[error("DNS error: {0}")]
     Dns(#[from] DnsError),
@@ -69,17 +45,19 @@ impl ProxyHandler {
     ) -> Result<(), ProxyError> {
         stream_in.set_nodelay(true)?;
 
+        let engine = &state.settings.engine;
+
         // Настройка TCP Keepalive
         let socket_ref = socket2::SockRef::from(&stream_in);
         let keepalive = socket2::TcpKeepalive::new()
-            .with_time(KEEPALIVE_TIME)
-            .with_interval(KEEPALIVE_INTERVAL)
-            .with_retries(KEEPALIVE_RETRIES);
+            .with_time(Duration::from_secs(engine.keepalive.time_secs))
+            .with_interval(Duration::from_secs(engine.keepalive.interval_secs))
+            .with_retries(engine.keepalive.retries);
         if let Err(err) = socket_ref.set_tcp_keepalive(&keepalive) {
             debug!("Failed to set TCP Keepalive: {err}");
         }
 
-        let mut reader = BufReader::with_capacity(BUFFER_CAPACITY, stream_in);
+        let mut reader = BufReader::with_capacity(engine.buffer_capacity, stream_in);
         let mut header_buffer = Vec::new();
         let mut line = String::new();
 
@@ -103,7 +81,6 @@ impl ProxyHandler {
             return Ok(());
         }
 
-        // Достаем целевой адрес (host)
         let target = Self::extract_target(&header_buffer)?;
 
         let (host, port, is_https) = match target {
@@ -112,7 +89,7 @@ impl ProxyHandler {
         };
 
         let mut stream_out = timeout(
-            CONNECT_TIMEOUT,
+            Duration::from_secs(engine.dns_connect_timeout_secs),
             state.resolver.race_connect_to_target(&host, port),
         )
         .await??;
@@ -123,21 +100,21 @@ impl ProxyHandler {
             reader.write_all(ack.as_bytes()).await?;
 
             // Вычитываем полный TLS-ClientHello + проверяем что это вообще он
-            let tls_record = TlsMangler::read_full_record(&mut reader)
-                .await
-                .map_err(|err| ProxyError::Manipulation {
-                    stage: "TLS Read",
-                    details: err.to_string(),
-                })?;
+            let tls_record =
+                TlsMangler::read_full_record(&mut reader)
+                    .await
+                    .map_err(|err| ProxyError::Manipulation {
+                        stage: "TLS Read",
+                        details: err.to_string(),
+                    })?;
 
-            // Выбор режима обработки TLS-ClientHello
-            match state.args.https_split_mode {
+            match state.settings.args.https_split_mode {
                 SplitMode::None => {
                     stream_out.write_all(&tls_record).await?;
                 }
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
-                    TlsMangler::fragment_handshake(&state.args, &mut stream_out, &tls_record)
+                    TlsMangler::fragment_handshake(&state.settings.args, &mut stream_out, &tls_record)
                         .await
                         .map_err(|err| ProxyError::Manipulation {
                             stage: "TLS Fragment",
@@ -146,19 +123,20 @@ impl ProxyHandler {
                 }
             }
         } else {
-            match state.args.http_split_mode {
+            match state.settings.args.http_split_mode {
                 SplitMode::None => {
-                    stream_out.write_all(&header_buffer).await.map_err(|err| {
-                        ProxyError::Relay {
+                    stream_out
+                        .write_all(&header_buffer)
+                        .await
+                        .map_err(|err| ProxyError::Relay {
                             host: host.clone(),
                             source: err,
-                        }
-                    })?;
+                        })?;
                 }
                 SplitMode::Fragment => {
                     // Модифицируем HTTP-headers
-                    let modified_headers = HttpMangler::modify_http_headers(&header_buffer)
-                        .map_err(|err| ProxyError::Manipulation {
+                    let modified_headers =
+                        HttpMangler::modify_http_headers(&header_buffer).map_err(|err| ProxyError::Manipulation {
                             stage: "HTTP Mangle",
                             details: err.to_string(),
                         })?;
@@ -198,7 +176,7 @@ impl ProxyHandler {
                 trace!("Shutdown: stopping relay for {host}");
                 Ok((0, 0))
             }
-            res = timeout(IDLE_TIMEOUT, relay_task) => res.map_err(|_| {
+            res = timeout(Duration::from_secs(engine.idle_timeout_secs), relay_task) => res.map_err(|_| {
                 trace!("Connection to {host} timed out (Idle)");
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "Idle timeout")
             })?,
@@ -232,14 +210,11 @@ impl ProxyHandler {
             return Err(ProxyError::BadRequest("Incomplete headers".into()));
         }
 
-        let method = req
-            .method
-            .ok_or(ProxyError::BadRequest("Missing method".into()))?;
+        let method = req.method.ok_or(ProxyError::BadRequest("Missing method".into()))?;
         let is_connect = method == "CONNECT";
 
         let raw_host = if is_connect {
-            req.path
-                .ok_or(ProxyError::BadRequest("Missing path".into()))?
+            req.path.ok_or(ProxyError::BadRequest("Missing path".into()))?
         } else {
             let host_header = req
                 .headers
@@ -247,8 +222,7 @@ impl ProxyHandler {
                 .find(|h| h.name.eq_ignore_ascii_case("Host"))
                 .ok_or(ProxyError::BadRequest("Host header not found".into()))?;
 
-            std::str::from_utf8(host_header.value)
-                .map_err(|e| ProxyError::BadRequest(e.to_string()))?
+            std::str::from_utf8(host_header.value).map_err(|err| ProxyError::BadRequest(err.to_string()))?
         };
 
         let host = raw_host
