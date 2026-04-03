@@ -1,0 +1,35 @@
+# CliArgs
+args:
+  addr: "127.0.0.1"
+  port: 8080
+  silent: false
+  log_level: "info"
+  dns_mode: "system"
+  dns_provider: "google"
+  dns_qtype: "ipv4"
+  http_split_mode: "none"
+  https_split_mode: "none"
+  https_fake_ttl_mode: "none"
+  https_fake_ttl_value: 1
+# EngineConfig
+engine:
+  # Размер буфера для чтения HTTP-заголовков и данных.
+  buffer_capacity: 2048
+  # Предел неактивности TCP-соединения (сек).
+  idle_timeout_secs: 30
+  # Тайм-аут на установку исходящего соединения с DNS сервером (сек).
+  dns_connect_timeout_secs: 5
+  # Максимальное время жизни прокси-сессий (защита от зомби-соединений) (сек).
+  max_session_duration_secs: 300
+  # Лимит конкурентных соединений (защита от исчерпания файловых дескрипторов).
+  max_concurrent_connections: 200
+  # Тайм-аут ожидания завершения при остановке сервиса (graceful shutdown) (сек).
+  shutdown_grace_period_secs: 10
+  # Настройки TCP Keepalive
+  keepalive:
+    # Время простоя (idle) перед отправкой первой проверки (сек).
+    time_secs: 15
+    # Интервал между повторными проверками (если нет ответа) (сек).
+    interval_secs: 5
+    # Количество неудачных попыток до разрыва соединения.
+    retries: 3

@@ -1,4 +1,4 @@
-use crate::cli_args::{DnsMode, DnsProvider, DnsQType};
+use crate::settings::{DnsMode, DnsProvider, DnsQType};
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use hickory_resolver::error::ResolveError;

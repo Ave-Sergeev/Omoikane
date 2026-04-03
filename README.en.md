@@ -44,17 +44,21 @@ The project is named after a Japanese mythological god of intellect, wisdom, and
 
 The fastest way to get started is to download the pre-compiled binary for your system:
 1. Go to the [Releases](https://github.com/Ave-Sergeev/Omoikane/releases) page.
-2. Download the archive for your architecture (Apple Silicon / Intel).
+2. Download the version for your macOS architecture (Apple Silicon or Intel).
 3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
 
 ### Building from Source
 
 Environment setup and build instructions can be found in the [development notes](https://github.com/Ave-Sergeev/Omoikane/blob/main/DEVELOPMENT.md).
 
-### CLI Configuration
+### Configuration
 
-The service is configured via command-line arguments.
-Available options:
+The service configuration is flexible and supports two priority levels:  
+- CLI Arguments — used for quick startup and overriding key parameters. These have the highest priority.
+- Configuration File (config.yaml) — intended for fine-tuning internal proxy-engine parameters that rarely require immediate changes.
+
+**Available CLI Arguments**:  
+If a parameter is not specified, the values from `config.yaml` or default values will be used.
 
 - `APP`
   - `--addr` - IP address to listen on. (Default: `127.0.0.1`)
