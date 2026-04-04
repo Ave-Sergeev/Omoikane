@@ -45,6 +45,7 @@ impl ProxyHandler {
     ) -> Result<(), ProxyError> {
         stream_in.set_nodelay(true)?;
 
+        let args = &state.settings.args;
         let engine = &state.settings.engine;
 
         // Настройка TCP Keepalive
@@ -89,7 +90,7 @@ impl ProxyHandler {
         };
 
         let mut stream_out = timeout(
-            Duration::from_secs(engine.dns_connect_timeout_secs),
+            Duration::from_millis(engine.dns_connect_timeout_millis),
             state.resolver.race_connect_to_target(&host, port),
         )
         .await??;
@@ -108,13 +109,13 @@ impl ProxyHandler {
                         details: err.to_string(),
                     })?;
 
-            match state.settings.args.https_split_mode {
+            match args.https_split_mode {
                 SplitMode::None => {
                     stream_out.write_all(&tls_record).await?;
                 }
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
-                    TlsMangler::fragment_handshake(&state.settings.args, &mut stream_out, &tls_record)
+                    TlsMangler::fragment_handshake(args, &engine.tls_fragmentation, &mut stream_out, &tls_record)
                         .await
                         .map_err(|err| ProxyError::Manipulation {
                             stage: "TLS Fragment",
@@ -123,7 +124,7 @@ impl ProxyHandler {
                 }
             }
         } else {
-            match state.settings.args.http_split_mode {
+            match args.http_split_mode {
                 SplitMode::None => {
                     stream_out
                         .write_all(&header_buffer)
@@ -142,7 +143,7 @@ impl ProxyHandler {
                         })?;
 
                     // Фрагментируем и отправляем HTTP-headers
-                    HttpMangler::send_split_request(&mut stream_out, &modified_headers)
+                    HttpMangler::send_split_request(&engine.http_fragmentation, &mut stream_out, &modified_headers)
                         .await
                         .map_err(|err| ProxyError::Manipulation {
                             stage: "НTTP Fragment",
@@ -176,7 +177,7 @@ impl ProxyHandler {
                 trace!("Shutdown: stopping relay for {host}");
                 Ok((0, 0))
             }
-            res = timeout(Duration::from_secs(engine.idle_timeout_secs), relay_task) => res.map_err(|_| {
+            res = timeout(Duration::from_secs(engine.tcp_idle_timeout_secs), relay_task) => res.map_err(|_| {
                 trace!("Connection to {host} timed out (Idle)");
                 std::io::Error::new(std::io::ErrorKind::TimedOut, "Idle timeout")
             })?,

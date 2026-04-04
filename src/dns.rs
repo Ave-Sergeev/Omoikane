@@ -63,17 +63,10 @@ impl DnsResolver {
     }
 
     /// Выполнение DNS-resolve доменного имени (host) в список сетевых адресов Socket-Addr
-    pub async fn resolve_to_socket(
-        &self,
-        host: &str,
-        port: u16,
-    ) -> Result<Vec<SocketAddr>, DnsError> {
+    pub async fn resolve_to_socket(&self, host: &str, port: u16) -> Result<Vec<SocketAddr>, DnsError> {
         let response = self.resolver.lookup_ip(host).await?;
 
-        let addrs: Vec<SocketAddr> = response
-            .iter()
-            .map(|ip| SocketAddr::new(ip, port))
-            .collect();
+        let addrs: Vec<SocketAddr> = response.iter().map(|ip| SocketAddr::new(ip, port)).collect();
 
         if addrs.is_empty() {
             return Err(DnsError::NoAddresses(host.to_string()));
@@ -83,16 +76,14 @@ impl DnsResolver {
     }
 
     /// Параллельное открытие соединений (Happy Eyeballs) для выбора рабочего маршрута
-    pub async fn race_connect_to_target(
-        &self,
-        host: &str,
-        port: u16,
-    ) -> Result<TcpStream, DnsError> {
+    pub async fn race_connect_to_target(&self, host: &str, port: u16) -> Result<TcpStream, DnsError> {
         let socket_addrs = self.resolve_to_socket(host, port).await?;
+
+        // Задержка (в миллисекундах) перед попыткой подключения к следующему IP-адресу
+        let delay_duration = Duration::from_millis(250);
 
         let mut attempts = FuturesUnordered::new();
         let mut addrs_iter = socket_addrs.into_iter().peekable();
-        let delay_duration = Duration::from_millis(250);
         let mut last_err = String::from("No addresses available");
 
         let sleep_fut = sleep(Duration::ZERO);

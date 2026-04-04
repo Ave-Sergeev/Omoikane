@@ -206,13 +206,59 @@ impl Default for KeepaliveConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsFragmentationConfig {
+    /// Jitter для первого фрагмента (мс).
+    pub first_jitter_ms: (u64, u64),
+    /// Jitter для критической зоны SNI (мс).
+    pub chunk_jitter_ms: (u64, u64),
+    /// Размер чанка для критической зоны SNI (байт).
+    pub chunk_size: (usize, usize),
+    /// Смещение (до/после) для критической зоны SNI (байт).
+    pub sni_offset: (usize, usize),
+}
+
+impl Default for TlsFragmentationConfig {
+    fn default() -> Self {
+        Self {
+            first_jitter_ms: (1, 5),
+            chunk_jitter_ms: (1, 5),
+            chunk_size: (1, 8),
+            sni_offset: (1, 5),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HttpFragmentationConfig {
+    /// Jitter для первого фрагмента (мс).
+    pub first_jitter_ms: (u64, u64),
+    /// Jitter чанка для последующих данных (мс).
+    pub chunk_jitter_ms: (u64, u64),
+    /// Смещение первой части заголовка (байт).
+    pub first_offset: (usize, usize),
+    /// Размер чанка для последующих данных (байт).
+    pub chunk_size: (usize, usize),
+}
+
+impl Default for HttpFragmentationConfig {
+    fn default() -> Self {
+        Self {
+            first_jitter_ms: (2, 6),
+            chunk_jitter_ms: (1, 7),
+            first_offset: (1, 5),
+            chunk_size: (12, 45),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EngineConfig {
     /// Размер буфера для чтения HTTP-заголовков и данных.
     pub buffer_capacity: usize,
-    /// Предел неактивности соединения.
-    pub idle_timeout_secs: u64,
+    /// Предел неактивности TCP-соединения.
+    pub tcp_idle_timeout_secs: u64,
     /// Тайм-аут на установку исходящего соединения с DNS сервером (race-connect).
-    pub dns_connect_timeout_secs: u64,
+    pub dns_connect_timeout_millis: u64,
     /// Лимит конкурентных соединений для предотвращения исчерпания файловых дескрипторов.
     /// На macOS (soft limit 256) значение 200 оставляет запас для системных нужд, предотвращая ошибку EMFILE (Too many open files).
     pub max_concurrent_connections: usize,
@@ -224,18 +270,24 @@ pub struct EngineConfig {
     pub shutdown_grace_period_secs: u64,
     /// Настройки TCP Keepalive.
     pub keepalive: KeepaliveConfig,
+    /// Настройки фрагментации TLS-ClientHello.
+    pub tls_fragmentation: TlsFragmentationConfig,
+    /// Настройки фрагментации HTTP-headers.
+    pub http_fragmentation: HttpFragmentationConfig,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             buffer_capacity: 2048,
-            idle_timeout_secs: 30,
-            dns_connect_timeout_secs: 5,
+            tcp_idle_timeout_secs: 30,
+            dns_connect_timeout_millis: 3000,
             max_concurrent_connections: 200,
             max_session_duration_secs: 300,
             shutdown_grace_period_secs: 10,
             keepalive: KeepaliveConfig::default(),
+            tls_fragmentation: TlsFragmentationConfig::default(),
+            http_fragmentation: HttpFragmentationConfig::default(),
         }
     }
 }

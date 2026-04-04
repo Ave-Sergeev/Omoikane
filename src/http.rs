@@ -5,6 +5,8 @@ use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+use crate::settings::HttpFragmentationConfig;
+
 #[derive(Error, Debug)]
 pub enum HttpManglerError {
     #[error("IO error: {0}")]
@@ -100,31 +102,44 @@ impl HttpMangler {
     }
 
     /// Фрагментация и отправка HTTP-headers
-    pub async fn send_split_request(target: &mut TcpStream, modified_headers: &[u8]) -> Result<(), HttpManglerError> {
+    pub async fn send_split_request(
+        config: &HttpFragmentationConfig,
+        target: &mut TcpStream,
+        modified_headers: &[u8],
+    ) -> Result<(), HttpManglerError> {
         target.set_nodelay(true)?;
 
-        if modified_headers.len() < 4 {
-            target.write_all(modified_headers).await?;
-            return Ok(());
+        let (rand_jitter, rand_offset, rand_chunk_size) = {
+            let mut rng = rand::rng();
+            (
+                rng.random_range(config.first_jitter_ms.0..=config.first_jitter_ms.1),
+                rng.random_range(config.first_offset.0..=config.first_offset.1),
+                rng.random_range(config.chunk_size.0..=config.chunk_size.1),
+            )
+        };
+
+        let total_len = modified_headers.len();
+
+        // Отправляем первую часть
+        let first_split = std::cmp::min(rand_offset, total_len);
+        if first_split > 0 {
+            target.write_all(&modified_headers[..first_split]).await?;
+            target.flush().await?;
+            tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
         }
 
-        // Отправляем первые 2 байта
-        target.write_all(&modified_headers[0..2]).await?;
-        target.flush().await?;
+        // Отправляем всё остальное, нарезая на рандомные чанки
+        if first_split < total_len {
+            let remaining = &modified_headers[first_split..];
 
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            for chunk in remaining.chunks(rand_chunk_size) {
+                target.write_all(chunk).await?;
+                target.flush().await?;
 
-        // Отправляем следующие несколько байт
-        target.write_all(&modified_headers[2..5]).await?;
-        target.flush().await?;
-
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-
-        // Отправляем всё остальное (нарезав на части по 32 байта)
-        for chunk in modified_headers[5..].chunks(32) {
-            target.write_all(chunk).await?;
-            target.flush().await?;
-            tokio::time::sleep(std::time::Duration::from_millis(3)).await;
+                // Jitter для борьбы с тайм-анализом
+                let jitter = rand::rng().random_range(config.chunk_jitter_ms.0..=config.chunk_jitter_ms.1);
+                tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+            }
         }
 
         Ok(())

@@ -80,7 +80,7 @@ If a parameter is not specified, the values from `config.yaml` or default values
 ### CLI Usage Examples
 
 All parameters have default values. If no arguments are provided, the standard settings will be used.  
-Network conditions vary by provider. If the default settings don't work for you, you'll need to experiment with the parameters to find the right combination for your specific case.
+Network conditions vary by provider. If the default settings do not yield the desired results, you should experiment with CLI arguments and parameters in the config.yaml file to find the optimal combination for your specific case.
 
 - **Silent Mode:** Suppresses banner output and informational messages. Recommended for background processes or service mode.
   > ./<path_to_binary_file> --silent

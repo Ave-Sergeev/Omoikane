@@ -1,4 +1,4 @@
-use crate::settings::{CliArgs, TtlStrategy};
+use crate::settings::{CliArgs, TlsFragmentationConfig, TtlStrategy};
 use log::trace;
 use rand::RngExt;
 use socket2::SockRef;
@@ -105,6 +105,7 @@ impl TlsMangler {
     /// Фрагментация и отправка TLS-ClientHello + TTL-Limited Injection
     pub async fn fragment_handshake(
         args: &CliArgs,
+        config: &TlsFragmentationConfig,
         target: &mut TcpStream,
         data: &[u8],
     ) -> Result<(), TlsManglerError> {
@@ -116,12 +117,12 @@ impl TlsMangler {
             if let Ok((host, sni_range)) = Self::find_sni_with_range(data) {
                 trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
 
-                let (rand_jitter, rand_chunk_size, rand_offset) = {
+                let (rand_jitter, rand_chunk_size, rand_sni_offset) = {
                     let mut rng = rand::rng();
                     (
-                        rng.random_range(1..7),   // Для Jitter
-                        rng.random_range(10..40), // Размер первого фрагмента
-                        rng.random_range(1..=5),  // Смещение для критической зоны SNI
+                        rng.random_range(config.first_jitter_ms.0..=config.first_jitter_ms.1),
+                        rng.random_range(config.chunk_size.0..=config.chunk_size.1),
+                        rng.random_range(config.sni_offset.0..=config.sni_offset.1),
                     )
                 };
 
@@ -142,13 +143,14 @@ impl TlsMangler {
                 }
 
                 // Определяем границы критической зоны вокруг SNI для фрагментации
-                let mut min_critical_zone = sni_range.start.saturating_sub(rand_offset).max(current_pos);
-                let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_offset);
+                let mut min_critical_zone = sni_range.start.saturating_sub(rand_sni_offset).max(current_pos);
+                let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_sni_offset);
 
                 // Отправляем данные от заголовка до начала критической зоны SNI
                 if min_critical_zone > current_pos {
                     target.write_all(&data[current_pos..min_critical_zone]).await?;
                     target.flush().await?;
+                    tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
                 }
 
                 // Фрагментируем критическую зону (SNI + окрестности)
@@ -158,8 +160,10 @@ impl TlsMangler {
                     target.write_all(&data[min_critical_zone..end_pos]).await?;
                     target.flush().await?;
 
-                    // Добавляем Jitter для борьбы с тайм-анализом
-                    tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
+                    // Jitter для борьбы с тайм-анализом
+                    let jitter = rand::rng().random_range(config.chunk_jitter_ms.0..=config.chunk_jitter_ms.1);
+                    tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+
                     min_critical_zone = end_pos;
                 }
 
