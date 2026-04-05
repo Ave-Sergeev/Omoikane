@@ -20,6 +20,7 @@ mod http;
 mod macros;
 mod network_manager;
 mod proxy;
+mod rand;
 mod settings;
 mod tls;
 

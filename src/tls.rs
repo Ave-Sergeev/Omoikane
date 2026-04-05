@@ -1,6 +1,6 @@
+use crate::rand::SmallRng;
 use crate::settings::{CliArgs, TlsFragmentationConfig, TtlStrategy};
 use log::trace;
-use rand::RngExt;
 use socket2::SockRef;
 use std::io;
 use thiserror::Error;
@@ -104,6 +104,7 @@ impl TlsMangler {
 
     /// Фрагментация и отправка TLS-ClientHello + TTL-Limited Injection
     pub async fn fragment_handshake(
+        rng: &mut SmallRng,
         args: &CliArgs,
         config: &TlsFragmentationConfig,
         target: &mut TcpStream,
@@ -118,11 +119,10 @@ impl TlsMangler {
                 trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
 
                 let (rand_jitter, rand_chunk_size, rand_sni_offset) = {
-                    let mut rng = rand::rng();
                     (
-                        rng.random_range(config.first_jitter_ms.0..=config.first_jitter_ms.1),
-                        rng.random_range(config.chunk_size.0..=config.chunk_size.1),
-                        rng.random_range(config.sni_offset.0..=config.sni_offset.1),
+                        rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
+                        rng.gen_range_usize(config.chunk_size.0, config.chunk_size.1),
+                        rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
                     )
                 };
 
@@ -161,7 +161,7 @@ impl TlsMangler {
                     target.flush().await?;
 
                     // Jitter для борьбы с тайм-анализом
-                    let jitter = rand::rng().random_range(config.chunk_jitter_ms.0..=config.chunk_jitter_ms.1);
+                    let jitter = rng.gen_range_u64(config.chunk_jitter_ms.0, config.chunk_jitter_ms.1);
                     tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
 
                     min_critical_zone = end_pos;

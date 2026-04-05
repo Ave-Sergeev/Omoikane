@@ -1,4 +1,5 @@
 use crate::http::HttpMangler;
+use crate::rand::SmallRng;
 use crate::{AppState, ProxyTarget};
 use crate::{dns::DnsError, settings::SplitMode, tls::TlsMangler};
 use log::{debug, trace, warn};
@@ -44,6 +45,8 @@ impl ProxyHandler {
         cancel_token: CancellationToken,
     ) -> Result<(), ProxyError> {
         stream_in.set_nodelay(true)?;
+
+        let mut rng = SmallRng::new();
 
         let args = &state.settings.args;
         let engine = &state.settings.engine;
@@ -115,12 +118,18 @@ impl ProxyHandler {
                 }
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
-                    TlsMangler::fragment_handshake(args, &engine.tls_fragmentation, &mut stream_out, &tls_record)
-                        .await
-                        .map_err(|err| ProxyError::Manipulation {
-                            stage: "TLS Fragment",
-                            details: err.to_string(),
-                        })?;
+                    TlsMangler::fragment_handshake(
+                        &mut rng,
+                        args,
+                        &engine.tls_fragmentation,
+                        &mut stream_out,
+                        &tls_record,
+                    )
+                    .await
+                    .map_err(|err| ProxyError::Manipulation {
+                        stage: "TLS Fragment",
+                        details: err.to_string(),
+                    })?;
                 }
             }
         } else {
@@ -137,13 +146,13 @@ impl ProxyHandler {
                 SplitMode::Fragment => {
                     // Модифицируем HTTP-headers
                     let modified_headers =
-                        HttpMangler::modify_http_headers(&header_buffer).map_err(|err| ProxyError::Manipulation {
+                        HttpMangler::modify_http_headers(&mut rng, &header_buffer).map_err(|err| ProxyError::Manipulation {
                             stage: "HTTP Mangle",
                             details: err.to_string(),
                         })?;
 
                     // Фрагментируем и отправляем HTTP-headers
-                    HttpMangler::send_split_request(&engine.http_fragmentation, &mut stream_out, &modified_headers)
+                    HttpMangler::send_split_request(&mut rng, &engine.http_fragmentation, &mut stream_out, &modified_headers)
                         .await
                         .map_err(|err| ProxyError::Manipulation {
                             stage: "НTTP Fragment",

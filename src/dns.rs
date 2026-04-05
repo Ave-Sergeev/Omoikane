@@ -1,6 +1,6 @@
 use crate::settings::{DnsMode, DnsProvider, DnsQType};
-use futures::StreamExt;
-use futures::stream::FuturesUnordered;
+use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use hickory_resolver::error::ResolveError;
 use hickory_resolver::{
     AsyncResolver, TokioAsyncResolver,
