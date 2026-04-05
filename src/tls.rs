@@ -118,10 +118,9 @@ impl TlsMangler {
             if let Ok((host, sni_range)) = Self::find_sni_with_range(data) {
                 trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
 
-                let (rand_jitter, rand_chunk_size, rand_sni_offset) = {
+                let (rand_jitter, rand_sni_offset) = {
                     (
                         rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
-                        rng.gen_range_usize(config.chunk_size.0, config.chunk_size.1),
                         rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
                     )
                 };
@@ -155,7 +154,11 @@ impl TlsMangler {
 
                 // Фрагментируем критическую зону (SNI + окрестности)
                 while min_critical_zone < max_critical_zone {
-                    let end_pos = std::cmp::min(min_critical_zone + rand_chunk_size, max_critical_zone);
+                    let min_size = config.chunk_size.0.max(1);
+                    let max_size = config.chunk_size.1.max(min_size);
+                    let current_rand_chunk_size = rng.gen_range_usize(min_size, max_size);
+
+                    let end_pos = std::cmp::min(min_critical_zone + current_rand_chunk_size, max_critical_zone);
 
                     target.write_all(&data[min_critical_zone..end_pos]).await?;
                     target.flush().await?;

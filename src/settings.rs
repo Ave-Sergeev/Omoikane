@@ -211,10 +211,10 @@ pub struct TlsFragmentationConfig {
     pub first_jitter_ms: (u64, u64),
     /// Jitter для критической зоны SNI (мс).
     pub chunk_jitter_ms: (u64, u64),
-    /// Размер чанка для критической зоны SNI (байт).
-    pub chunk_size: (usize, usize),
     /// Смещение (до/после) для критической зоны SNI (байт).
     pub sni_offset: (usize, usize),
+    /// Диапазон размеров чанков для критической зоны SNI (байт).
+    pub chunk_size: (usize, usize),
 }
 
 impl Default for TlsFragmentationConfig {
@@ -236,7 +236,7 @@ pub struct HttpFragmentationConfig {
     pub chunk_jitter_ms: (u64, u64),
     /// Смещение первой части заголовка (байт).
     pub first_offset: (usize, usize),
-    /// Размер чанка для последующих данных (байт).
+    /// Диапазон размеров чанков для последующих данных (байт).
     pub chunk_size: (usize, usize),
 }
 
@@ -246,7 +246,7 @@ impl Default for HttpFragmentationConfig {
             first_jitter_ms: (2, 6),
             chunk_jitter_ms: (1, 7),
             first_offset: (1, 5),
-            chunk_size: (12, 45),
+            chunk_size: (24, 148),
         }
     }
 }
@@ -280,7 +280,7 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             buffer_capacity: 2048,
-            tcp_idle_timeout_secs: 30,
+            tcp_idle_timeout_secs: 60,
             dns_connect_timeout_millis: 3000,
             max_concurrent_connections: 200,
             max_session_duration_secs: 300,

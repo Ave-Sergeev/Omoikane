@@ -106,11 +106,10 @@ impl HttpMangler {
     ) -> Result<(), HttpManglerError> {
         target.set_nodelay(true)?;
 
-        let (rand_jitter, rand_offset, rand_chunk_size) = {
+        let (rand_jitter, rand_offset) = {
             (
                 rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
                 rng.gen_range_usize(config.first_offset.0, config.first_offset.1),
-                rng.gen_range_usize(config.chunk_size.0, config.chunk_size.1),
             )
         };
 
@@ -126,15 +125,25 @@ impl HttpMangler {
 
         // Отправляем всё остальное, нарезая на рандомные чанки
         if first_split < total_len {
-            let remaining = &modified_headers[first_split..];
+            let mut current_pos = first_split;
+            let modified_len = modified_headers.len();
 
-            for chunk in remaining.chunks(rand_chunk_size) {
+            while current_pos < modified_len {
+                let min_size = config.chunk_size.0.max(1);
+                let max_size = config.chunk_size.1.max(min_size);
+                let current_rand_size = rng.gen_range_usize(min_size, max_size);
+
+                let end_pos = std::cmp::min(current_pos + current_rand_size, modified_len);
+                let chunk = &modified_headers[current_pos..end_pos];
+
                 target.write_all(chunk).await?;
                 target.flush().await?;
 
                 // Jitter для борьбы с тайм-анализом
                 let jitter = rng.gen_range_u64(config.chunk_jitter_ms.0, config.chunk_jitter_ms.1);
                 tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+
+                current_pos = end_pos;
             }
         }
 
@@ -145,11 +154,11 @@ impl HttpMangler {
     fn scramble_host(rng: &mut SmallRng, host: &str) -> String {
         let mut scrambled: String = host
             .chars()
-            .map(|c| {
+            .map(|char| {
                 if rng.gen_bool(0.5) {
-                    c.to_ascii_uppercase()
+                    char.to_ascii_uppercase()
                 } else {
-                    c.to_ascii_lowercase()
+                    char.to_ascii_lowercase()
                 }
             })
             .collect();

@@ -2,7 +2,7 @@ use crate::http::HttpMangler;
 use crate::rand::SmallRng;
 use crate::{AppState, ProxyTarget};
 use crate::{dns::DnsError, settings::SplitMode, tls::TlsMangler};
-use log::{debug, trace, warn};
+use log::{debug, trace};
 use std::io::ErrorKind;
 use std::sync::Arc;
 use std::time::Duration;
@@ -146,18 +146,25 @@ impl ProxyHandler {
                 SplitMode::Fragment => {
                     // Модифицируем HTTP-headers
                     let modified_headers =
-                        HttpMangler::modify_http_headers(&mut rng, &header_buffer).map_err(|err| ProxyError::Manipulation {
-                            stage: "HTTP Mangle",
-                            details: err.to_string(),
+                        HttpMangler::modify_http_headers(&mut rng, &header_buffer).map_err(|err| {
+                            ProxyError::Manipulation {
+                                stage: "HTTP Mangle",
+                                details: err.to_string(),
+                            }
                         })?;
 
                     // Фрагментируем и отправляем HTTP-headers
-                    HttpMangler::send_split_request(&mut rng, &engine.http_fragmentation, &mut stream_out, &modified_headers)
-                        .await
-                        .map_err(|err| ProxyError::Manipulation {
-                            stage: "НTTP Fragment",
-                            details: err.to_string(),
-                        })?;
+                    HttpMangler::send_split_request(
+                        &mut rng,
+                        &engine.http_fragmentation,
+                        &mut stream_out,
+                        &modified_headers,
+                    )
+                    .await
+                    .map_err(|err| ProxyError::Manipulation {
+                        stage: "НTTP Fragment",
+                        details: err.to_string(),
+                    })?;
                 }
             }
 
@@ -196,7 +203,7 @@ impl ProxyHandler {
                 ErrorKind::NotConnected | ErrorKind::BrokenPipe | ErrorKind::ConnectionReset => {
                     trace!("Connection closed by peer");
                 }
-                _ => warn!("Relay error with {host}: {err}"),
+                _ => debug!("Relay error with {host}: {err}"),
             },
         }
 
