@@ -12,11 +12,12 @@
 - Для запуска и использования не требуются root-права.
 - Вся обработка TCP-трафика происходит локально на вашем компьютере.
 - Поддержка протоколов DoH и DoT защищает DNS-запросы от перехвата и подмены (DNS Spoofing), обеспечивая корректный резолвинг адресов еще до установки соединения.
+- Функция динамического изменения отпечатков (fingerprint) сессий делает затруднительной блокировку трафика по сигнатурам (экспериментально).
 - Инструмент обрабатывает только фазу инициализации сессии (TLS ClientHello, HTTP-headers). Основная полезная нагрузка (`payload`) передается транзитом без вмешательства, что сводит задержки и нагрузку на систему к минимуму.
 - Изменения применяются ко всем новым соединениям сразу после запуска и автоматически прекращаются при завершении работы.
 
 **Основная задача**:  
-Сохранение устойчивости TCP-соединений в условиях глубокого анализа трафика (DPI) на промежуточных узлах сети, а также применение методов защиты от атак типа DNS Spoofing и Cache Poisoning.
+Сохранение устойчивости TCP-соединений в условиях глубокого анализа трафика (DPI) на промежуточных узлах сети через механизмы фрагментации TCP-потока и манипуляции структурой пакетов. В том числе применение методов защиты от атак типа DNS Spoofing и Cache Poisoning, а также динамическое изменение отпечатков (fingerprint) сессии.
 
 Целевая платформа: macOS Apple Silicon (`aarch64-apple-darwin`) & Intel (`x86_64-apple-darwin`).  
 Статус: Тестирование и стабильная работа подтверждены на macOS автора (Apple Silicon).  
@@ -72,9 +73,10 @@ Active Research & PoC 🦀
 - `HTTP`
   - `--http-split-mode` - фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
 - `HTTPS`
-  - `--https-split-mode` - фрагментация TLS ClientHello: `none`, `fragment`. (По умолчанию: `none`)
+  - `--https-split-mode` - фрагментация TLS-ClientHello: `none`, `fragment`. (По умолчанию: `none`)
   - `--https-fake-ttl-mode` - стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
   - `--https-fake-ttl-value` — значение TTL для режима `custom`. (По умолчанию: `1`, диапазон `1-255`)
+  - `--https-greased-padding` - динамическое изменение отпечатка (fingerprint) сессии путем повышения энтропии TLS-рукопожатия (GREASE & Padding): `true`, `false`. (По умолчанию: `false`) 
 
 ### Примеры запуска в CLI
 
@@ -95,8 +97,8 @@ Active Research & PoC 🦀
 - **Умеренный режим:**. Включает фрагментацию пакетов, Google DoT (IPv4) для обхода простых ограничений.
   > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode dot --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment
 
-- **Максимальный режим:**. Использование DNS-over-HTTPS, фрагментация пакетов и кастомная подстройка TTL.
-  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode doh --dns-provider cloudflare --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
+- **Максимальный режим:**. Использование DNS-over-HTTPS, фрагментации пакетов, кастомной подстройки TTL, изменение fingerprint.
+  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode doh --dns-provider cloudflare --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
 
 ### Детали реализации
 

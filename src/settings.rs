@@ -117,7 +117,7 @@ pub struct RawCliArgs {
     #[serde(rename = "args.http_split_mode", skip_serializing_if = "Option::is_none")]
     pub http_split_mode: Option<SplitMode>,
 
-    /// Способ фрагментации `TLS ClientHello`: "none", "fragment".
+    /// Способ фрагментации `TLS-ClientHello`: "none", "fragment".
     #[arg(value_enum, long = "https-split-mode", help_heading = "HTTPS")]
     #[serde(rename = "args.https_split_mode", skip_serializing_if = "Option::is_none")]
     pub https_split_mode: Option<SplitMode>,
@@ -127,10 +127,15 @@ pub struct RawCliArgs {
     #[serde(rename = "args.https_fake_ttl_mode", skip_serializing_if = "Option::is_none")]
     pub https_fake_ttl_mode: Option<TtlStrategy>,
 
-    /// Конкретное значение `TTL` (для стратегии 'custom').
+    /// Конкретное значение `TTL` (для стратегии "custom").
     #[arg(long = "https-fake-ttl-value", value_parser = clap::value_parser!(u8).range(1..=255), help_heading = "HTTPS")]
     #[serde(rename = "args.https_fake_ttl_value", skip_serializing_if = "Option::is_none")]
     pub https_fake_ttl_value: Option<u8>,
+
+    /// Динамическое изменение отпечатка (fingerprint) путем повышения энтропии TLS-рукопожатия (GREASE & Padding): "true", "false".
+    #[arg(long = "https-greased-padding", help_heading = "HTTPS")]
+    #[serde(rename = "args.https_greased_padding", skip_serializing_if = "Option::is_none")]
+    pub https_greased_padding: Option<bool>,
 }
 
 impl From<RawCliArgs> for CliArgs {
@@ -148,6 +153,7 @@ impl From<RawCliArgs> for CliArgs {
             https_split_mode: raw.https_split_mode.unwrap_or(default.https_split_mode),
             https_fake_ttl_mode: raw.https_fake_ttl_mode.unwrap_or(default.https_fake_ttl_mode),
             https_fake_ttl_value: raw.https_fake_ttl_value.unwrap_or(default.https_fake_ttl_value),
+            https_greased_padding: raw.https_greased_padding.unwrap_or(default.https_greased_padding),
         }
     }
 }
@@ -165,6 +171,7 @@ pub struct CliArgs {
     pub https_split_mode: SplitMode,
     pub https_fake_ttl_mode: TtlStrategy,
     pub https_fake_ttl_value: u8,
+    pub https_greased_padding: bool,
 }
 
 impl Default for CliArgs {
@@ -181,6 +188,7 @@ impl Default for CliArgs {
             https_split_mode: SplitMode::None,
             https_fake_ttl_mode: TtlStrategy::None,
             https_fake_ttl_value: 1,
+            https_greased_padding: false,
         }
     }
 }

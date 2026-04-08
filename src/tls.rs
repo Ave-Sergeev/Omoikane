@@ -1,3 +1,4 @@
+use crate::fingerprint::TlsFingerprint;
 use crate::rand::SmallRng;
 use crate::settings::{CliArgs, TlsFragmentationConfig, TtlStrategy};
 use log::trace;
@@ -16,6 +17,9 @@ pub enum TlsManglerError {
 
     #[error("Invalid TLS content type: 0x{0:02X}")]
     InvalidContentType(u8),
+
+    #[error("Invalid TLS handshake type: 0x{0:02X}, expected ClientHello (0x01)")]
+    InvalidHandshakeType(u8),
 
     #[error("Unsupported TLS version: {0}.{1}")]
     UnsupportedVersion(u8, u8),
@@ -38,26 +42,33 @@ impl TlsMangler {
         let mut header = [0u8; 5];
         reader.read_exact(&mut header).await?;
 
-        // Проверяем тип контента (0x16 (22) — Handshake)
+        // 0x16 (22) — Handshake
         if header[0] != 0x16 {
             return Err(TlsManglerError::InvalidContentType(header[0]));
         }
 
-        // Проверяем версию протокола
+        // 0x03 - TLS 1.x
         if header[1] != 0x03 {
             return Err(TlsManglerError::UnsupportedVersion(header[1], header[2]));
         }
 
+        // Лимит записи TLS 16384 байт + накладные расходы
         let payload_len = u16::from_be_bytes([header[3], header[4]]) as usize;
-
-        // Лимит - TLS ограничивает запись 16384 байтами + накладные расходы
         if payload_len > 17000 {
             return Err(TlsManglerError::RecordTooLarge(payload_len));
         }
 
-        let mut record = vec![0u8; 5 + payload_len];
-        record[..5].copy_from_slice(&header);
-        reader.read_exact(&mut record[5..]).await?;
+        let mut payload = vec![0u8; payload_len];
+        reader.read_exact(&mut payload).await?;
+
+        // 0x01 — Client Hello
+        if payload.is_empty() || payload[0] != 0x01 {
+            return Err(TlsManglerError::InvalidHandshakeType(payload[0]));
+        }
+
+        let mut record = Vec::with_capacity(5 + payload_len);
+        record.extend_from_slice(&header);
+        record.extend_from_slice(&payload);
 
         Ok(record)
     }
@@ -85,8 +96,7 @@ impl TlsMangler {
             }
         };
 
-        // Отправляем TLS-header с заданным TTL
-        // Сервер переотправит TLS-header благодаря механизму Retransmission, но уже с нормальным TLL
+        // Сервер переотправит TLS-header через Retransmission уже с нормальным TLL
         target.write_all(&data[0..5]).await?;
         target.flush().await?;
 
@@ -112,79 +122,93 @@ impl TlsMangler {
     ) -> Result<(), TlsManglerError> {
         target.set_nodelay(true)?;
 
-        // 0x16 - Handshake, 0x03 - (TLS 1.x)
-        if data.len() > 5 && data[0] == 0x16 && data[1] == 0x03 {
-            // Пробуем найти SNI и его позицию
-            if let Ok((host, sni_range)) = Self::find_sni_with_range(data) {
-                trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
+        // 0x16 - Handshake, 0x03 - TLS 1.x
+        if data.len() > 5
+            && data[0] == 0x16
+            && data[1] == 0x03
+            && let Ok((host, sni_range)) = Self::find_sni_with_range(data)
+        {
+            trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
 
-                let (rand_jitter, rand_sni_offset) = {
-                    (
-                        rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
-                        rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
-                    )
-                };
+            let (rand_jitter, rand_sni_offset) = {
+                (
+                    rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
+                    rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
+                )
+            };
 
-                let mut current_pos = 0;
-                let total_len = data.len();
+            let mut current_pos = 0;
+            let total_len = data.len();
 
-                match args.https_fake_ttl_mode {
-                    TtlStrategy::None => {
-                        trace!("[{host}] TTL-Limited Injection skipped (Mode: None)");
-                    }
-                    TtlStrategy::Custom => {
-                        let ttl_to_use = u32::from(args.https_fake_ttl_value);
-
-                        Self::inject_ttl_limited_packet(target, &data[0..5], ttl_to_use).await?;
-                        current_pos = 5;
-                        trace!("[{host}] TTL-Limited Injection executed (TTL={ttl_to_use})");
-                    }
+            match args.https_fake_ttl_mode {
+                TtlStrategy::None => {
+                    trace!("[{host}] TTL-Limited Injection skipped (Mode: None)");
                 }
+                TtlStrategy::Custom => {
+                    let ttl_to_use = u32::from(args.https_fake_ttl_value);
 
-                // Определяем границы критической зоны вокруг SNI для фрагментации
-                let mut min_critical_zone = sni_range.start.saturating_sub(rand_sni_offset).max(current_pos);
-                let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_sni_offset);
-
-                // Отправляем данные от заголовка до начала критической зоны SNI
-                if min_critical_zone > current_pos {
-                    target.write_all(&data[current_pos..min_critical_zone]).await?;
-                    target.flush().await?;
-                    tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
+                    Self::inject_ttl_limited_packet(target, &data[0..5], ttl_to_use).await?;
+                    current_pos = 5;
+                    trace!("[{host}] TTL-Limited Injection executed (TTL={ttl_to_use})");
                 }
-
-                // Фрагментируем критическую зону (SNI + окрестности)
-                while min_critical_zone < max_critical_zone {
-                    let min_size = config.chunk_size.0.max(1);
-                    let max_size = config.chunk_size.1.max(min_size);
-                    let current_rand_chunk_size = rng.gen_range_usize(min_size, max_size);
-
-                    let end_pos = std::cmp::min(min_critical_zone + current_rand_chunk_size, max_critical_zone);
-
-                    target.write_all(&data[min_critical_zone..end_pos]).await?;
-                    target.flush().await?;
-
-                    // Jitter для борьбы с тайм-анализом
-                    let jitter = rng.gen_range_u64(config.chunk_jitter_ms.0, config.chunk_jitter_ms.1);
-                    tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
-
-                    min_critical_zone = end_pos;
-                }
-
-                // Досылаем остаток TLS-пакета после критической зоны одним фрагментом
-                if max_critical_zone < total_len {
-                    target.write_all(&data[max_critical_zone..]).await?;
-                    target.flush().await?;
-                }
-
-                return Ok(());
             }
+
+            // Определяем границы критической зоны вокруг SNI для фрагментации
+            let mut min_critical_zone = sni_range.start.saturating_sub(rand_sni_offset).max(current_pos);
+            let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_sni_offset);
+
+            // Отправляем данные от заголовка до начала критической зоны SNI
+            if min_critical_zone > current_pos {
+                target.write_all(&data[current_pos..min_critical_zone]).await?;
+                target.flush().await?;
+                tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
+            }
+
+            // Фрагментируем критическую зону (SNI + окрестности)
+            while min_critical_zone < max_critical_zone {
+                let min_size = config.chunk_size.0.max(1);
+                let max_size = config.chunk_size.1.max(min_size);
+                let current_rand_chunk_size = rng.gen_range_usize(min_size, max_size);
+
+                let end_pos = std::cmp::min(min_critical_zone + current_rand_chunk_size, max_critical_zone);
+
+                target.write_all(&data[min_critical_zone..end_pos]).await?;
+                target.flush().await?;
+
+                // Jitter для борьбы с тайм-анализом
+                let jitter = rng.gen_range_u64(config.chunk_jitter_ms.0, config.chunk_jitter_ms.1);
+                tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+
+                min_critical_zone = end_pos;
+            }
+
+            // Досылаем остаток TLS-пакета после критической зоны одним фрагментом
+            if max_critical_zone < total_len {
+                target.write_all(&data[max_critical_zone..]).await?;
+                target.flush().await?;
+            }
+
+            return Ok(());
         }
 
-        // Отправляем данные без изменений если это не TLS-handshake, или SNI не найден
+        // Без изменений если это не TLS-handshake, или SNI не найден
         target.write_all(data).await?;
         target.flush().await?;
 
         Ok(())
+    }
+
+    /// Подготовка данных TLS (GREASE + Padding)
+    pub fn prepare_tls_data(rng: &mut SmallRng, data: &[u8]) -> Vec<u8> {
+        // 0x16 - Handshake, 0x03 - TLS 1.x
+        let is_tls_handshake = data.len() > 5 && data[0] == 0x16 && data[1] == 0x03;
+
+        if is_tls_handshake {
+            let greased_data = TlsFingerprint::shuffle_grease(rng, data);
+            TlsFingerprint::padding_encap(rng, greased_data)
+        } else {
+            data.to_vec()
+        }
     }
 
     /// Поиск диапазон байт, где лежит SNI внутри TLS-ClientHello

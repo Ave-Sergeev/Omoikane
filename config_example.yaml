@@ -1,16 +1,17 @@
 # CliArgs
 args:
-  addr: "127.0.0.1"
+  addr: 127.0.0.1
   port: 8080
   silent: false
-  log_level: "info"
-  dns_mode: "system"
-  dns_provider: "google"
-  dns_qtype: "ipv4"
-  http_split_mode: "none"
-  https_split_mode: "none"
-  https_fake_ttl_mode: "none"
+  log_level: info
+  dns_mode: system
+  dns_provider: google
+  dns_qtype: ipv4
+  http_split_mode: none
+  https_split_mode: none
+  https_fake_ttl_mode: none
   https_fake_ttl_value: 1
+  https_greased_padding: false
 
 # EngineConfig
 engine:
@@ -25,7 +26,7 @@ engine:
   # Тайм-аут на установку исходящего соединения с DNS сервером (мс).
   dns_connect_timeout_millis: 3000
   # Тайм-аут ожидания завершения при остановке сервиса (graceful shutdown) (сек).
-  shutdown_grace_period_secs: 10
+  shutdown_grace_period_secs: 5
   # Настройки TCP Keepalive
   keepalive:
     # Время простоя (idle) перед отправкой первой проверки (сек).
@@ -37,19 +38,19 @@ engine:
   # Настройки фрагментации TLS-ClientHello (диапазоны [min, max])
   tls_fragmentation:
     # Jitter для первого фрагмента (мс).
-    first_jitter_ms: [1, 7]
+    first_jitter_ms: [1, 5]
     # Jitter для критической зоны SNI (мс).
     chunk_jitter_ms: [1, 5]
     # Смещение (до/после) для критической зоны SNI (байт).
     sni_offset: [1, 5]
     # Диапазон размеров чанков для критической зоны SNI (байт).
-    chunk_size: [1, 8]
+    chunk_size: [1, 6]
   # Настройки фрагментации HTTP-headers (диапазоны [min, max])
   http_fragmentation:
     # Jitter для первого фрагмента (мс).
     first_jitter_ms: [2, 6]
     # Jitter чанка для последующих данных (мс).
-    chunk_jitter_ms: [1, 7]
+    chunk_jitter_ms: [1, 5]
     # Смещение первой части заголовка (байт).
     first_offset: [1, 5]
     # Диапазон размеров чанков для последующих данных (байт).
