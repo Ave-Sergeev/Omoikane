@@ -150,7 +150,7 @@ impl HttpMangler {
         Ok(())
     }
 
-    /// Применение методов Header Case + Dot Trick
+    /// Применение Header Case + Dot Trick
     fn scramble_host(rng: &mut SmallRng, host: &str) -> String {
         let mut scrambled: String = host
             .chars()
@@ -167,7 +167,7 @@ impl HttpMangler {
         scrambled
     }
 
-    /// Применение методов Space Trick + Absolute URI
+    /// Применение Space Trick + Absolute URI
     fn build_request_line(rng: &mut SmallRng, method: &str, host: &str, path: &str) -> String {
         let space_count = rng.gen_range_usize(1, 4);
         let spaces = " ".repeat(space_count);

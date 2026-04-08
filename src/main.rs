@@ -16,6 +16,7 @@ use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 mod dns;
+mod fingerprint;
 mod http;
 mod macros;
 mod network_manager;
@@ -132,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Настройка Log-Level и инициализации Logger
+/// Настройка Log-Level и инициализация Logger
 fn init_logger(log_level: &LogLevel) {
     let level = match log_level {
         LogLevel::Off => LevelFilter::Off,

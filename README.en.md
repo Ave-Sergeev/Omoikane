@@ -13,10 +13,11 @@ Due to the language's architectural features, it ensures minimal latency and low
 - All TCP traffic processing occurs locally on your computer.
 - Support for DoH and DoT protocols protects DNS queries from interception and spoofing, ensuring correct address resolution before a connection is established.
 - The tool only processes the session initialization phase (TLS ClientHello, HTTP headers). The main payload is transmitted transparently without interference, minimizing latency and system load.
+- Dynamic session fingerprinting makes traffic blocking by signatures difficult (this feature is in experimental mode).
 - Changes are applied to all new connections immediately upon startup and automatically cease when the process is terminated.
 
 **Main Objective**:  
-Maintaining the stability of TCP connections in environments with Deep Packet Inspection (DPI) at intermediate network nodes, as well as implementing protection methods against DNS Spoofing and Cache Poisoning attacks.
+Maintaining the resilience of TCP connections against Deep Packet Inspection (DPI) at intermediate network nodes through TCP stream fragmentation and packet structure manipulation. This includes the implementation of defense mechanisms against DNS Spoofing and Cache Poisoning attacks, as well as dynamic session fingerprinting.
 
 Target Platform: macOS Apple Silicon (`aarch64-apple-darwin`) & Intel (`x86_64-apple-darwin`).  
 Status: Testing and stable operation confirmed on the author's macOS (Apple Silicon).
@@ -76,7 +77,8 @@ If a parameter is not specified, the values from `config.yaml` or default values
   - `--https-split-mode` - TLS ClientHello fragmentation: `none`, `fragment`. (Default: `none`)
   - `--https-fake-ttl-mode` - TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
   - `--https-fake-ttl-value` - TTL value for `custom` mode. (Default: `1`, range: `1-255`)
-        
+  - `--https-greased-padding` - Dynamic modification of the session fingerprint by increasing TLS handshake entropy (GREASE & Padding): `true`, `false`. (Default: `false`)
+
 ### CLI Usage Examples
 
 All parameters have default values. If no arguments are provided, the standard settings will be used.  

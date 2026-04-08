@@ -11,6 +11,7 @@ args:
   https_split_mode: "none"
   https_fake_ttl_mode: "none"
   https_fake_ttl_value: 1
+  https_grease: false
 
 # EngineConfig
 engine:

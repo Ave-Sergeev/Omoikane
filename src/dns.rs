@@ -79,7 +79,7 @@ impl DnsResolver {
     pub async fn race_connect_to_target(&self, host: &str, port: u16) -> Result<TcpStream, DnsError> {
         let socket_addrs = self.resolve_to_socket(host, port).await?;
 
-        // Задержка (в миллисекундах) перед попыткой подключения к следующему IP-адресу
+        // Задержка (в мс) перед попыткой подключения к следующему IP-адресу
         let delay_duration = Duration::from_millis(250);
 
         let mut attempts = FuturesUnordered::new();

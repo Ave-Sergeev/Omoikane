@@ -7,7 +7,7 @@ pub struct SmallRng {
 }
 
 impl SmallRng {
-    /// Создает RNG (seed = текущее временем в наносекундах)
+    /// Инициализизация RNG (seed = XOR времени (нс) и адреса стека для энтропии)
     pub fn new() -> Self {
         #[allow(clippy::cast_possible_truncation)]
         let time = SystemTime::now()
@@ -29,7 +29,7 @@ impl SmallRng {
         rng
     }
 
-    /// Перемешивание элементов слайса (Fisher-Yates shuffle)
+    /// Перемешивание элементов (Fisher-Yates shuffle)
     pub fn shuffle<T>(&mut self, slice: &mut [T]) {
         let len = slice.len();
         if len < 2 {
@@ -42,7 +42,7 @@ impl SmallRng {
         }
     }
 
-    /// Генерация логического значения с заданной вероятностью (от 0.0 до 1.0)
+    /// Генерация bool с заданной вероятностью (от 0.0 до 1.0)
     #[inline]
     pub fn gen_bool(&mut self, probability: f64) -> bool {
         // 2^53 — предел точности мантиссы f64

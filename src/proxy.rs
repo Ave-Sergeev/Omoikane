@@ -51,7 +51,6 @@ impl ProxyHandler {
         let args = &state.settings.args;
         let engine = &state.settings.engine;
 
-        // Настройка TCP Keepalive
         let socket_ref = socket2::SockRef::from(&stream_in);
         let keepalive = socket2::TcpKeepalive::new()
             .with_time(Duration::from_secs(engine.keepalive.time_secs))
@@ -65,7 +64,6 @@ impl ProxyHandler {
         let mut header_buffer = Vec::new();
         let mut line = String::new();
 
-        // Читаем все заголовки до пустой строки
         loop {
             line.clear();
             match reader.read_line(&mut line).await {
@@ -99,11 +97,10 @@ impl ProxyHandler {
         .await??;
 
         if is_https {
-            // Пишем ack для клиента
             let ack = "HTTP/1.1 200 Connection Established\r\n\r\n";
             reader.write_all(ack.as_bytes()).await?;
 
-            // Вычитываем полную TLS-запись (ожидаем ClientHello)
+            // Вычитываем полную TLS-record (ожидаем ClientHello)
             let tls_record =
                 TlsMangler::read_full_record(&mut reader)
                     .await
@@ -112,9 +109,16 @@ impl ProxyHandler {
                         details: err.to_string(),
                     })?;
 
+            // Подготавливаем данные TLS (пытаемся изменить GREASE & Padding)
+            let maybe_prepare_data = if args.https_greased_padding {
+                TlsMangler::prepare_tls_data(&mut rng, &tls_record)
+            } else {
+                tls_record.clone()
+            };
+
             match args.https_split_mode {
                 SplitMode::None => {
-                    stream_out.write_all(&tls_record).await?;
+                    stream_out.write_all(&maybe_prepare_data).await?;
                 }
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
@@ -123,7 +127,7 @@ impl ProxyHandler {
                         args,
                         &engine.tls_fragmentation,
                         &mut stream_out,
-                        &tls_record,
+                        &maybe_prepare_data,
                     )
                     .await
                     .map_err(|err| ProxyError::Manipulation {
