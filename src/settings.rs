@@ -187,7 +187,7 @@ impl Default for CliArgs {
             http_split_mode: SplitMode::None,
             https_split_mode: SplitMode::None,
             https_fake_ttl_mode: TtlStrategy::None,
-            https_fake_ttl_value: 1,
+            https_fake_ttl_value: 0,
             https_greased_padding: false,
         }
     }
@@ -260,6 +260,32 @@ impl Default for HttpFragmentationConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsClientHelloShapingConfig {
+    /// Вероятность использования GREASE вместо обычного Padding (0.0 — 1.0).
+    pub grease_ratio: f64,
+    ///  Вероятность появления случайного байта в наполнении Padding (0.0 — 1.0).
+    pub padding_entropy_ratio: f64,
+    /// Вероятность выбора "легкого" профиля (0.0 — 1.0).
+    pub light_profile_ratio: f64,
+    /// Диапазон размеров сообщения TLS-ClientHello для легкого профиля (байт).
+    pub light_client_hello_size: (usize, usize),
+    /// Диапазон размеров сообщения TLS-ClientHello для тяжелого профиля (байт).
+    pub heavy_client_hello_size: (usize, usize),
+}
+
+impl Default for TlsClientHelloShapingConfig {
+    fn default() -> Self {
+        Self {
+            grease_ratio: 0.15,
+            padding_entropy_ratio: 0.5,
+            light_profile_ratio: 0.75,
+            light_client_hello_size: (512, 780),
+            heavy_client_hello_size: (910, 1450),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EngineConfig {
     /// Размер буфера для чтения HTTP-заголовков и данных.
     pub buffer_capacity: usize,
@@ -282,6 +308,8 @@ pub struct EngineConfig {
     pub tls_fragmentation: TlsFragmentationConfig,
     /// Настройки фрагментации HTTP-headers.
     pub http_fragmentation: HttpFragmentationConfig,
+    /// Настройки формирования TLS-ClientHello.
+    pub tls_client_hello_shaping: TlsClientHelloShapingConfig,
 }
 
 impl Default for EngineConfig {
@@ -296,6 +324,7 @@ impl Default for EngineConfig {
             keepalive: KeepaliveConfig::default(),
             tls_fragmentation: TlsFragmentationConfig::default(),
             http_fragmentation: HttpFragmentationConfig::default(),
+            tls_client_hello_shaping: TlsClientHelloShapingConfig::default(),
         }
     }
 }

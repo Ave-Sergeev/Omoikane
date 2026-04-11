@@ -48,6 +48,9 @@ The fastest way to get started is to download the pre-compiled binary for your s
 2. Download the version for your macOS architecture (Apple Silicon or Intel).
 3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
 
+⚠️ Note ⚠️  
+When launching the utility for the first time, macOS may display a "unverified developer" warning. This is standard macOS behavior for third-party software — simply allow the app to run in the settings ("Privacy & Security" section).
+
 ### Building from Source
 
 Environment setup and build instructions can be found in the [development notes](https://github.com/Ave-Sergeev/Omoikane/blob/main/DEVELOPMENT.md).

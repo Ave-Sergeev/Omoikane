@@ -10,7 +10,7 @@ args:
   http_split_mode: none
   https_split_mode: none
   https_fake_ttl_mode: none
-  https_fake_ttl_value: 1
+  https_fake_ttl_value: 0
   https_greased_padding: false
 
 # EngineConfig
@@ -35,7 +35,7 @@ engine:
     interval_secs: 5
     # Количество неудачных попыток до разрыва соединения.
     retries: 3
-  # Настройки фрагментации TLS-ClientHello (диапазоны [min, max])
+  # Настройки фрагментации TLS-ClientHello (диапазоны [min, max]) (при --https-split-mode fragment)
   tls_fragmentation:
     # Jitter для первого фрагмента (мс).
     first_jitter_ms: [1, 5]
@@ -45,7 +45,7 @@ engine:
     sni_offset: [1, 5]
     # Диапазон размеров чанков для критической зоны SNI (байт).
     chunk_size: [1, 6]
-  # Настройки фрагментации HTTP-headers (диапазоны [min, max])
+  # Настройки фрагментации HTTP-headers (диапазоны [min, max]) (при --http-split-mode fragment)
   http_fragmentation:
     # Jitter для первого фрагмента (мс).
     first_jitter_ms: [2, 6]
@@ -55,3 +55,15 @@ engine:
     first_offset: [1, 5]
     # Диапазон размеров чанков для последующих данных (байт).
     chunk_size: [24, 148]
+  # Настройки формирования TLS-ClientHello (при --https-greased-padding true)
+  tls_client_hello_shaping:
+    # Вероятность использования GREASE вместо обычного Padding (0.0 — 1.0).
+    grease_ratio: 0.15
+    # Вероятность появления случайного байта в наполнении Padding (0.0 — только нули, 1.0 — только случайные).
+    padding_entropy_ratio: 0.5
+    # Вероятность выбора "легкого" профиля (0.0 - 1.0).
+    light_profile_ratio: 0.75
+    # Диапазон размеров сообщения ClientHello для легкого профиля (байт).
+    light_client_hello_size: [512, 780]
+    # Диапазон размеров сообщения ClientHello для тяжелого профиля (байт).
+    heavy_client_hello_size: [910, 1450]

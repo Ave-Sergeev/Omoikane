@@ -111,7 +111,7 @@ impl ProxyHandler {
 
             // Подготавливаем данные TLS (пытаемся изменить GREASE & Padding)
             let maybe_prepare_data = if args.https_greased_padding {
-                TlsMangler::prepare_tls_data(&mut rng, &tls_record)
+                TlsMangler::prepare_tls_data(&mut rng, &tls_record, &engine.tls_client_hello_shaping)
             } else {
                 tls_record.clone()
             };

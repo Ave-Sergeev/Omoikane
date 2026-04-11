@@ -1,17 +1,68 @@
-use crate::rand::SmallRng;
+use log::trace;
+
+use crate::{rand::SmallRng, settings::TlsClientHelloShapingConfig};
+
+struct TlsContext<'a> {
+    ext_len_pos: usize,
+    sni_slice: &'a [u8],
+    psk_slice: &'a [u8],
+    padding_slice: &'a [u8],
+    other_exts: Vec<&'a [u8]>,
+}
+
+impl Default for TlsContext<'_> {
+    fn default() -> Self {
+        Self {
+            ext_len_pos: 0,
+            sni_slice: &[],
+            psk_slice: &[],
+            padding_slice: &[],
+            other_exts: Vec::with_capacity(32),
+        }
+    }
+}
+
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExtensionType {
+    Sni = 0x0000,
+    Alpn = 0x0010,
+    Padding = 0x0015,
+    Psk = 0x0029,
+    SupportedVersions = 0x002B,
+    KeyShare = 0x0033,
+}
+
+impl ExtensionType {
+    fn from_u16(value: u16) -> Option<Self> {
+        match value {
+            0x0000 => Some(Self::Sni),
+            0x0010 => Some(Self::Alpn),
+            0x0015 => Some(Self::Padding),
+            0x0029 => Some(Self::Psk),
+            0x002B => Some(Self::SupportedVersions),
+            0x0033 => Some(Self::KeyShare),
+            _ => None,
+        }
+    }
+
+    fn value(self) -> u16 {
+        self as u16
+    }
+}
 
 pub struct TlsFingerprint;
 
 impl TlsFingerprint {
-    /// Перемешивание существующих GREASE-значения в полях Cipher Suites и Extensions
-    pub fn shuffle_grease(rng: &mut SmallRng, data: &[u8]) -> Vec<u8> {
-        // Точно знаем что у нас приходит полная TLS-record (внутри по крайней мере 1 TLS-ClientHello)
-        // Набор GREASE значений согласно RFC 8701
-        const GREASE_VALUES: [u16; 16] = [
-            0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A, 0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA,
-            0xDADA, 0xEAEA, 0xFAFA,
-        ];
+    // Record Header (5) + Handshake Header (4) + Version (2) + Client Random (32) = 43
+    const CLIENT_HELLO_BASE_LEN: usize = 43;
+    const GREASE_VALUES: [u16; 16] = [
+        0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A, 0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA, 0xDADA,
+        0xEAEA, 0xFAFA,
+    ];
 
+    /// Перемешивание существующих GREASE в полях Cipher Suites и Extensions
+    pub fn shuffle_grease(rng: &mut SmallRng, data: &[u8]) -> Vec<u8> {
         let shuffle_in_place = |rng: &mut SmallRng, pos: &mut Vec<usize>, data: &mut [u8]| {
             if pos.len() < 2 {
                 pos.clear();
@@ -26,8 +77,7 @@ impl TlsFingerprint {
         let mut positions = Vec::with_capacity(16);
         let mut inner_positions = Vec::with_capacity(16);
 
-        // Record Header (5) + Handshake Header (4) + Version (2) + Client Random (32) = 43
-        let mut index = 43;
+        let mut index = Self::CLIENT_HELLO_BASE_LEN;
 
         // Пропускаем Session ID
         if let Some(next) = Self::skip_u8_len(&new_data, index) {
@@ -44,7 +94,7 @@ impl TlsFingerprint {
 
             for curr in (start..end.saturating_sub(1)).step_by(2) {
                 let val = u16::from_be_bytes([new_data[curr], new_data[curr + 1]]);
-                if GREASE_VALUES.contains(&val) {
+                if Self::GREASE_VALUES.contains(&val) {
                     positions.push(curr);
                 }
             }
@@ -71,18 +121,21 @@ impl TlsFingerprint {
                 let body_start = curr + 4;
                 let body_end = (body_start + ext_len).min(end);
 
-                if GREASE_VALUES.contains(&ext_type) {
+                if Self::GREASE_VALUES.contains(&ext_type) {
                     positions.push(curr);
                 }
 
                 let mut ptr = body_start;
-                if matches!(ext_type, 0x000a | 0x000d | 0x002d | 0x0033) && ptr + 2 <= body_end {
+                if let Some(ExtensionType::Alpn | ExtensionType::SupportedVersions | ExtensionType::KeyShare) =
+                    ExtensionType::from_u16(ext_type)
+                    && ptr + 2 <= body_end
+                {
                     ptr += 2;
                 }
 
                 while ptr + 1 < body_end {
                     let val = u16::from_be_bytes([new_data[ptr], new_data[ptr + 1]]);
-                    if GREASE_VALUES.contains(&val) {
+                    if Self::GREASE_VALUES.contains(&val) {
                         inner_positions.push(ptr);
                     }
                     ptr += 2;
@@ -97,106 +150,153 @@ impl TlsFingerprint {
         new_data
     }
 
-    /// Затенение SNI расширением Padding (перемена их мест и увеличиение общего размера блока Padding)
-    pub fn padding_encap(rng: &mut SmallRng, data: Vec<u8>) -> Vec<u8> {
-        // Record Header (5) + Handshake Header (4) + Version (2) + Client Random (32) = 43
-        let index = 43;
-
-        // Пропускаем Session ID
-        let Some(index) = Self::skip_u8_len(&data, index) else {
-            return data;
-        };
-        // Пропускаем Cipher Suites
-        let Some(index) = Self::skip_u16_len(&data, index) else {
-            return data;
-        };
-        // Пропускаем Compression Methods
-        let Some(index) = Self::skip_u8_len(&data, index) else {
-            return data;
-        };
-
-        let ext_len_pos = index;
-        if index + 2 > data.len() {
-            return data;
+    /// Пересобираем TLS-ClientHello (если возможно)
+    pub fn padding_encap(rng: &mut SmallRng, data: &[u8], config: &TlsClientHelloShapingConfig) -> Vec<u8> {
+        if let Some(ctx) = Self::parse_tls_layout(data)
+            && !ctx.sni_slice.is_empty()
+            && !ctx.padding_slice.is_empty()
+        {
+            return Self::transform_padding(rng, data, ctx, config);
         }
 
+        trace!("Skipping padding transform: missing SNI or Padding");
+        data.to_vec()
+    }
+
+    /// Разбираем структуру TLS-ClientHello на компоненты без копирования данных
+    fn parse_tls_layout(data: &[u8]) -> Option<TlsContext<'_>> {
+        let index = Self::CLIENT_HELLO_BASE_LEN;
+
+        let index = Self::skip_u8_len(data, index)?; // Пропускаем Session ID
+        let index = Self::skip_u16_len(data, index)?; // Пропускаем Cipher Suites
+        let index = Self::skip_u8_len(data, index)?; // Пропускаем Compression Methods
+
+        if index + 2 > data.len() {
+            return None;
+        }
+
+        // Определяем границы блока расширений
         let total_ext_len = u16::from_be_bytes([data[index], data[index + 1]]) as usize;
         let mut curr = index + 2;
         let ext_end = (curr + total_ext_len).min(data.len());
 
-        let mut sni_slice: &[u8] = &[];
-        let mut padding_slice: &[u8] = &[];
-        let mut other_exts_ranges = Vec::with_capacity(16);
+        let mut ctx = TlsContext::default();
 
-        // Собираем расширения
+        // Итерируемся по расширениям
         while curr + 4 <= ext_end {
             let etype = u16::from_be_bytes([data[curr], data[curr + 1]]);
             let elen = u16::from_be_bytes([data[curr + 2], data[curr + 3]]) as usize;
             let full_len = 4 + elen;
-
             if curr + full_len > data.len() {
                 break;
             }
-            let block = &data[curr..curr + full_len];
 
-            match etype {
-                0x0000 => sni_slice = block,
-                0x0015 => padding_slice = block,
-                _ => other_exts_ranges.push(curr..curr + full_len),
+            // Классифицируем расширения: SNI, Padding, PSK берем отдельно, остальное в общий список
+            match ExtensionType::from_u16(etype) {
+                Some(ExtensionType::Sni) => ctx.sni_slice = &data[curr..curr + full_len],
+                Some(ExtensionType::Padding) => ctx.padding_slice = &data[curr..curr + full_len],
+                Some(ExtensionType::Psk) => ctx.psk_slice = &data[curr..curr + full_len],
+                _ => ctx.other_exts.push(&data[curr..curr + full_len]),
             }
             curr += full_len;
         }
+        Some(ctx)
+    }
 
-        // TODO: Добавить создание своего padding_block при отсутствии
-        if sni_slice.is_empty() || padding_slice.is_empty() {
-            return data;
-        }
+    /// Пересобираем TLS-ClientHello, c модификацией Padding и перемешиванием Extension
+    fn transform_padding(
+        rng: &mut SmallRng,
+        data: &[u8],
+        ctx: TlsContext,
+        config: &TlsClientHelloShapingConfig,
+    ) -> Vec<u8> {
+        // Определяем целевой размер TLS-ClientHello
+        let target_total_len = if rng.gen_bool(config.light_profile_ratio) {
+            rng.gen_range_usize(config.light_client_hello_size.0, config.light_client_hello_size.1)
+        } else {
+            rng.gen_range_usize(config.heavy_client_hello_size.0, config.heavy_client_hello_size.1)
+        };
+        let diff = target_total_len.saturating_sub(data.len());
 
-        let target_total_len = rng.gen_range_usize(512, 780);
-        let current_total = data.len();
-        let diff = target_total_len.saturating_sub(current_total);
-
-        let mut final_data = Vec::with_capacity(current_total + diff);
-
-        final_data.extend_from_slice(&data[..ext_len_pos]);
+        // Копируем изначальный ClientHello до блока расширений
+        let mut final_data = Vec::with_capacity(data.len() + diff);
+        final_data.extend_from_slice(&data[..ctx.ext_len_pos]);
         final_data.extend_from_slice(&[0, 0]);
-
         let ext_start_in_final = final_data.len();
 
-        // Собираем Padding первым (маскируя в нем SNI)
-        let real_pad_payload_len = padding_slice.len().saturating_sub(4);
-        let fake_pad_len = real_pad_payload_len + diff + sni_slice.len();
+        // Подготавливаем пул Extensions
+        let mut shuffle_pool = Vec::with_capacity(ctx.other_exts.len() + 2); // +2 для SNI и Padding
 
-        final_data.extend_from_slice(&[0x00, 0x15]); // Type
-        final_data.extend_from_slice(&(fake_pad_len).to_be_bytes()); // Fake Length
-        final_data.extend_from_slice(&padding_slice[4..]); // Оригинальные нули
-        if diff > 0 {
-            final_data.resize(final_data.len() + diff, 0); // Новые нули
-        }
-        final_data.extend_from_slice(sni_slice); // Вставляем SNI внутрь
-
-        // Добавляем остальные расширения
-        for range in other_exts_ranges {
-            final_data.extend_from_slice(&data[range]);
+        for ext in ctx.other_exts {
+            shuffle_pool.push(ext);
         }
 
-        // Финализация длин
-        let final_ext_len = final_data.len() - ext_start_in_final;
+        // Генерируем Padding как отдельный Extension
+        let real_pad_payload_len = ctx.padding_slice.len().saturating_sub(4);
+        let total_pad_len = real_pad_payload_len + diff;
+
+        let mut padding_ext = Vec::with_capacity(4 + total_pad_len);
+
+        // Выбираем тип Padding
+        let padding_type = if rng.gen_bool(config.grease_ratio) {
+            let grease_val = Self::GREASE_VALUES[rng.gen_range_usize(0, Self::GREASE_VALUES.len() - 1)];
+            grease_val.to_be_bytes()
+        } else {
+            ExtensionType::Padding.value().to_be_bytes()
+        };
+
+        padding_ext.extend_from_slice(&padding_type); // Тип Padding
+        padding_ext.extend_from_slice(&(total_pad_len).to_be_bytes()); // Длина
+
+        #[allow(clippy::cast_possible_truncation)]
+        for _ in 0..total_pad_len {
+            let byte = if rng.gen_bool(config.padding_entropy_ratio) {
+                rng.gen_range_usize(0, 256) as u8
+            } else {
+                0
+            };
+            padding_ext.push(byte);
+        }
+
+        // Добавляем SNI и Padding в пул для перемешивания
+        shuffle_pool.push(ctx.sni_slice);
+        shuffle_pool.push(&padding_ext);
+
+        // Перемешиваем всё вместе и собираем
+        rng.shuffle(&mut shuffle_pool);
+        for ext in shuffle_pool {
+            final_data.extend_from_slice(ext);
+        }
+
+        // PSK в конце
+        if !ctx.psk_slice.is_empty() {
+            final_data.extend_from_slice(ctx.psk_slice);
+        }
+
+        // Корректируем длины в заголовках
+        Self::finalize_headers(final_data, ctx.ext_len_pos, ext_start_in_final)
+    }
+
+    /// Корректируем поля длины в TLS-record и Handshake заголовках
+    fn finalize_headers(mut final_data: Vec<u8>, ext_len_pos: usize, ext_start: usize) -> Vec<u8> {
+        // Обновляем длину блока Extensions
+        let final_ext_len = final_data.len() - ext_start;
         let ext_bytes = (final_ext_len).to_be_bytes();
         final_data[ext_len_pos] = ext_bytes[0];
         final_data[ext_len_pos + 1] = ext_bytes[1];
 
         let total_len = final_data.len();
 
-        // Глобальная длина Record
+        // Обновляем длину всей TLS-record (за вычетом 5 байт Record)
         #[allow(clippy::cast_possible_truncation)]
         let rec_len = (total_len.saturating_sub(5)) as u16;
         final_data[3..5].copy_from_slice(&rec_len.to_be_bytes());
 
-        // Глобальная длина Handshake
+        // Обновляем длину Handshake (за вычетом 9 байт: 5 Record + 4 Handshake)
         #[allow(clippy::cast_possible_truncation)]
         let hs_len = (total_len.saturating_sub(9)) as u32;
         let hlb = hs_len.to_be_bytes();
+        // Длина Handshake 3 байта (с 6-го по 9-й)
         final_data[6..9].copy_from_slice(&hlb[1..4]);
 
         final_data

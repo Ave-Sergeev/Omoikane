@@ -1,6 +1,6 @@
 use crate::fingerprint::TlsFingerprint;
 use crate::rand::SmallRng;
-use crate::settings::{CliArgs, TlsFragmentationConfig, TtlStrategy};
+use crate::settings::{CliArgs, TlsFragmentationConfig, TlsClientHelloShapingConfig, TtlStrategy};
 use log::trace;
 use socket2::SockRef;
 use std::io;
@@ -199,13 +199,13 @@ impl TlsMangler {
     }
 
     /// Подготовка данных TLS (GREASE + Padding)
-    pub fn prepare_tls_data(rng: &mut SmallRng, data: &[u8]) -> Vec<u8> {
+    pub fn prepare_tls_data(rng: &mut SmallRng, data: &[u8], config: &TlsClientHelloShapingConfig) -> Vec<u8> {
         // 0x16 - Handshake, 0x03 - TLS 1.x
         let is_tls_handshake = data.len() > 5 && data[0] == 0x16 && data[1] == 0x03;
 
         if is_tls_handshake {
-            let greased_data = TlsFingerprint::shuffle_grease(rng, data);
-            TlsFingerprint::padding_encap(rng, greased_data)
+            let padded_data = TlsFingerprint::padding_encap(rng, data, config);
+            TlsFingerprint::shuffle_grease(rng, &padded_data)
         } else {
             data.to_vec()
         }
