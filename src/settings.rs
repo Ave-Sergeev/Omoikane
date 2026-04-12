@@ -128,7 +128,7 @@ pub struct RawCliArgs {
     pub https_fake_ttl_mode: Option<TtlStrategy>,
 
     /// Конкретное значение `TTL` (для стратегии "custom").
-    #[arg(long = "https-fake-ttl-value", value_parser = clap::value_parser!(u8).range(1..=255), help_heading = "HTTPS")]
+    #[arg(long = "https-fake-ttl-value", value_parser = clap::value_parser!(u8).range(0..=255), help_heading = "HTTPS")]
     #[serde(rename = "args.https_fake_ttl_value", skip_serializing_if = "Option::is_none")]
     pub https_fake_ttl_value: Option<u8>,
 

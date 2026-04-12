@@ -1,6 +1,6 @@
 [package]
 name = "omoikane"
-version = "1.3.0"
+version = "1.4.0"
 authors = ["Artem Sergeev"]
 license = "Apache-2.0"
 edition = "2024"
@@ -36,6 +36,11 @@ hickory-resolver = { version = "0.24.4", features = [
     "dns-over-https-rustls",
     "webpki-roots",
 ] }
+
+[target.'cfg(windows)'.dependencies]
+ctrlc = "3.5.2"
+winreg = "0.56.0"
+windows-sys = { version = "0.61.2", features = ["Win32_Networking_WinInet"] }
 
 [profile.release-lto]
 inherits = "release"
