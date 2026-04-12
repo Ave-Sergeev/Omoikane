@@ -16,6 +16,29 @@ Due to the language's architectural features, it ensures minimal latency and low
 - Dynamic session fingerprinting makes traffic blocking by signatures difficult (this feature is in experimental mode).
 - Changes are applied to all new connections immediately upon startup and automatically cease when the process is terminated.
 
+Platforms:
+- **macOS**  
+    On Apple Silicon (`aarch64-apple-darwin`) & Intel (`x86_64-apple-darwin`).  
+    Status: Testing and stable operation confirmed on the author's macOS (Apple Silicon).
+- **Windows**  
+    On Windows 7, 8, 10, 11 on Intel/AMD processors (`x86_64-pc-windows-msvc`).  
+    Status: Testing and stable operation confirmed on the author's Windows 10.
+- **Linux**  
+    On Ubuntu, Debian, CentOS, Fedora, Alpine, Arch distributions (`x86_64-unknown-linux-musl`).  
+    Status: Testing has not been conducted; functionality is theoretical only.
+    
+### Quick Start
+
+The fastest way to get started is to download the pre-compiled binary for your system:
+1. Go to the [Releases](https://github.com/Ave-Sergeev/Omoikane/releases) page.
+2. Download the version for your OS.
+3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
+
+⚠️ Note ⚠️  
+When launching the utility for the first time, macOS may display a "unverified developer" warning. This is standard macOS behavior for third-party software — simply allow the app to run in the settings ("Privacy & Security" section).
+
+### About
+
 **Main Objective**:  
 Maintaining the resilience of TCP connections against Deep Packet Inspection (DPI) at intermediate network nodes through TCP stream fragmentation and packet structure manipulation. This includes the implementation of defense mechanisms against DNS Spoofing and Cache Poisoning attacks, as well as dynamic session fingerprinting.
 
@@ -40,16 +63,6 @@ Commit history has been intentionally simplified by the author.
 
 **Symbolism**:  
 The project is named after a Japanese mythological god of intellect, wisdom, and strategy, who restored light to the world by finding a "clever way" where direct action had failed.
-
-### Quick Start
-
-The fastest way to get started is to download the pre-compiled binary for your system:
-1. Go to the [Releases](https://github.com/Ave-Sergeev/Omoikane/releases) page.
-2. Download the version for your macOS architecture (Apple Silicon or Intel).
-3. Extract the archive and move the binary to a location of your choice. Run it from the terminal.
-
-⚠️ Note ⚠️  
-When launching the utility for the first time, macOS may display a "unverified developer" warning. This is standard macOS behavior for third-party software — simply allow the app to run in the settings ("Privacy & Security" section).
 
 ### Building from Source
 
