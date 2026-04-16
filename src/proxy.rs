@@ -101,7 +101,7 @@ impl ProxyHandler {
             reader.write_all(ack.as_bytes()).await?;
 
             // Вычитываем полную TLS-record (ожидаем ClientHello)
-            let tls_record =
+            let mut tls_record =
                 TlsMangler::read_full_record(&mut reader)
                     .await
                     .map_err(|err| ProxyError::Manipulation {
@@ -109,16 +109,14 @@ impl ProxyHandler {
                         details: err.to_string(),
                     })?;
 
-            // Подготавливаем данные TLS (пытаемся изменить GREASE & Padding)
-            let maybe_prepare_data = if args.https_greased_padding {
-                TlsMangler::prepare_tls_data(&mut rng, &tls_record, &engine.tls_client_hello_shaping)
-            } else {
-                tls_record.clone()
-            };
+            if args.https_greased_padding {
+                // Подготавливаем данные TLS (пытаемся изменить GREASE & Padding)
+                tls_record = TlsMangler::prepare_tls_data(&mut rng, &tls_record, &engine.tls_client_hello_shaping);
+            }
 
             match args.https_split_mode {
                 SplitMode::None => {
-                    stream_out.write_all(&maybe_prepare_data).await?;
+                    stream_out.write_all(&tls_record).await?;
                 }
                 SplitMode::Fragment => {
                     // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
@@ -127,7 +125,7 @@ impl ProxyHandler {
                         args,
                         &engine.tls_fragmentation,
                         &mut stream_out,
-                        &maybe_prepare_data,
+                        &tls_record,
                     )
                     .await
                     .map_err(|err| ProxyError::Manipulation {

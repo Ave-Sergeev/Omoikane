@@ -1,6 +1,6 @@
 use crate::fingerprint::TlsFingerprint;
 use crate::rand::SmallRng;
-use crate::settings::{CliArgs, TlsFragmentationConfig, TlsClientHelloShapingConfig, TtlStrategy};
+use crate::settings::{CliArgs, TlsClientHelloShapingConfig, TlsFragmentationConfig, TtlStrategy};
 use log::trace;
 use socket2::SockRef;
 use std::io;
@@ -191,7 +191,8 @@ impl TlsMangler {
             return Ok(());
         }
 
-        // Без изменений если это не TLS-handshake, или SNI не найден
+        // Отправляем без изменений если это не TLS-handshake, или SNI не найден
+        trace!("Skipping handshake fragmentation: SNI not found");
         target.write_all(data).await?;
         target.flush().await?;
 

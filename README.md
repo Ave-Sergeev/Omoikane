@@ -107,11 +107,11 @@ Active Research & PoC 🦀
   Полная запись (явное указание параметров):  
     > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
 
-- **Умеренный режим:**. Включает фрагментацию пакетов, Google DoT (IPv4) для обхода простых ограничений.
-  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode dot --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment
+- **Умеренный режим:**. Включает фрагментацию пакетов, Сloudflare DNS-over-TLS (IPv4) для обхода простых ограничений.
+  > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
 
-- **Максимальный режим:**. Использование DNS-over-HTTPS, фрагментации пакетов, кастомной подстройки TTL, изменение fingerprint.
-  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode doh --dns-provider cloudflare --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
+- **Максимальный режим:**. Использование DNS-over-HTTPS (IPv4), фрагментации пакетов, кастомной подстройки TTL, изменение fingerprint.
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
 
 ### Детали реализации
 

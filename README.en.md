@@ -107,11 +107,11 @@ Network conditions vary by provider. If the default settings do not yield the de
   Full command (explicitly defined parameters):
     > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
 
-- **Moderate Mode:** Enables packet fragmentation and Google DoT (IPv4) to bypass simple restrictions.
-  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode dot --dns-qtype ipv4 --http-split-mode none --https-split-mode fragment
+- **Moderate Mode:** Enables packet fragmentation and Cloudflare DNS-over-TLS (IPv4) to bypass simple restrictions.
+  > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
 
-- **Maximum Mode:** Using DNS-over-HTTPS, packet fragmentation, custom TTL adjustment, and fingerprint modification.
-  > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode doh --dns-provider cloudflare --dns-qtype ipv4 --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
+- **Maximum Mode:** Using DNS-over-HTTPS (IPv4), packet fragmentation, custom TTL adjustment, and fingerprint modification.
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
 
 ### Implementation Details
 

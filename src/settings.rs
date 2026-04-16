@@ -230,8 +230,8 @@ impl Default for TlsFragmentationConfig {
         Self {
             first_jitter_ms: (1, 5),
             chunk_jitter_ms: (1, 5),
-            chunk_size: (1, 8),
             sni_offset: (1, 5),
+            chunk_size: (1, 8),
         }
     }
 }
@@ -263,10 +263,10 @@ impl Default for HttpFragmentationConfig {
 pub struct TlsClientHelloShapingConfig {
     /// Вероятность использования GREASE вместо обычного Padding (0.0 — 1.0).
     pub grease_ratio: f64,
-    ///  Вероятность появления случайного байта в наполнении Padding (0.0 — 1.0).
-    pub padding_entropy_ratio: f64,
     /// Вероятность выбора "легкого" профиля (0.0 — 1.0).
     pub light_profile_ratio: f64,
+    ///  Вероятность появления случайного байта в наполнении Padding (0.0 — 1.0).
+    pub padding_entropy_ratio: f64,
     /// Диапазон размеров сообщения TLS-ClientHello для легкого профиля (байт).
     pub light_client_hello_size: (usize, usize),
     /// Диапазон размеров сообщения TLS-ClientHello для тяжелого профиля (байт).
@@ -277,10 +277,10 @@ impl Default for TlsClientHelloShapingConfig {
     fn default() -> Self {
         Self {
             grease_ratio: 0.15,
-            padding_entropy_ratio: 0.5,
             light_profile_ratio: 0.75,
+            padding_entropy_ratio: 0.1,
             light_client_hello_size: (512, 780),
-            heavy_client_hello_size: (910, 1450),
+            heavy_client_hello_size: (780, 2050),
         }
     }
 }
