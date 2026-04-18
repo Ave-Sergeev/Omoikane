@@ -267,10 +267,10 @@ pub struct TlsClientHelloShapingConfig {
     pub light_profile_ratio: f64,
     ///  Вероятность появления случайного байта в наполнении Padding (0.0 — 1.0).
     pub padding_entropy_ratio: f64,
-    /// Диапазон размеров сообщения TLS-ClientHello для легкого профиля (байт).
-    pub light_client_hello_size: (usize, usize),
-    /// Диапазон размеров сообщения TLS-ClientHello для тяжелого профиля (байт).
-    pub heavy_client_hello_size: (usize, usize),
+    /// Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для легкого профиля (байт).
+    pub light_client_hello_delta: (usize, usize),
+    /// Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для тяжелого профиля (байт).
+    pub heavy_client_hello_delta: (usize, usize),
 }
 
 impl Default for TlsClientHelloShapingConfig {
@@ -278,9 +278,9 @@ impl Default for TlsClientHelloShapingConfig {
         Self {
             grease_ratio: 0.15,
             light_profile_ratio: 0.75,
-            padding_entropy_ratio: 0.1,
-            light_client_hello_size: (512, 780),
-            heavy_client_hello_size: (780, 2050),
+            padding_entropy_ratio: 0.15,
+            light_client_hello_delta: (194, 520),
+            heavy_client_hello_delta: (780, 1850),
         }
     }
 }

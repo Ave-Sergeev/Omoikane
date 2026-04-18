@@ -15,6 +15,7 @@ Due to the language's architectural features, it ensures minimal latency and low
 - The tool only processes the session initialization phase (TLS-ClientHello, HTTP-headers). The main payload is transmitted transparently without interference, minimizing latency and system load.
 - Dynamic session fingerprinting makes traffic blocking by signatures difficult (this feature is in experimental mode).
 - Changes are applied to all new connections immediately upon startup and automatically cease when the process is terminated.
+- Builds are available for popular operating systems: macOS, Windows, and Linux.
 
 Platforms:
 - **macOS**  
@@ -111,7 +112,7 @@ Network conditions vary by provider. If the default settings do not yield the de
   > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
 
 - **Maximum Mode:** Using DNS-over-HTTPS (IPv4), packet fragmentation, custom TTL adjustment, and fingerprint modification.
-  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
 
 ### Implementation Details
 

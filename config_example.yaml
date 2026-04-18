@@ -62,8 +62,8 @@ engine:
     # Вероятность выбора "легкого" профиля (0.0 - 1.0).
     light_profile_ratio: 0.75
     # Вероятность появления случайного байта в наполнении Padding (0.0 — только нули, 1.0 — только случайные).
-    padding_entropy_ratio: 0.1
-    # Диапазон размеров сообщения ClientHello для легкого профиля (байт).
-    light_client_hello_size: [512, 780]
-    # Диапазон размеров сообщения ClientHello для тяжелого профиля (байт).
-    heavy_client_hello_size: [910, 1450]
+    padding_entropy_ratio: 0.15
+    # Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для легкого профиля (байт).
+    light_client_hello_delta: [194, 520]
+    # Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для тяжелого профиля (байт).
+    heavy_client_hello_delta: [780, 1850]

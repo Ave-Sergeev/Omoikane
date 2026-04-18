@@ -15,6 +15,7 @@
 - Функция динамического изменения отпечатков (fingerprint) сессий делает затруднительной блокировку трафика по сигнатурам (экспериментально).
 - Инструмент обрабатывает только фазу инициализации сессии (TLS-ClientHello, HTTP-headers). Основная полезная нагрузка (payload) передается транзитом без вмешательства, что сводит задержки и нагрузку на систему к минимуму.
 - Изменения применяются ко всем новым соединениям сразу после запуска и автоматически прекращаются при завершении работы.
+- Доступны сборки под популярные операционные системы: macOS, Windows и Linux.
 
 Платформы:
 - **macOS**  
@@ -111,7 +112,7 @@ Active Research & PoC 🦀
   > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
 
 - **Максимальный режим:**. Использование DNS-over-HTTPS (IPv4), фрагментации пакетов, кастомной подстройки TTL, изменение fingerprint.
-  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
 
 ### Детали реализации
 
