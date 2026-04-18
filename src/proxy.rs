@@ -110,7 +110,7 @@ impl ProxyHandler {
                     })?;
 
             if args.https_greased_padding {
-                // Подготавливаем данные TLS (пытаемся изменить GREASE & Padding)
+                // Подготавливаем данные TLS (пытаемся модифицировать GREASE & Padding)
                 tls_record = TlsMangler::prepare_tls_data(&mut rng, &tls_record, &engine.tls_client_hello_shaping);
             }
 

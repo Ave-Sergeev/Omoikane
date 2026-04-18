@@ -15,6 +15,7 @@
 - Функция динамического изменения отпечатков (fingerprint) сессий делает затруднительной блокировку трафика по сигнатурам (экспериментально).
 - Инструмент обрабатывает только фазу инициализации сессии (TLS-ClientHello, HTTP-headers). Основная полезная нагрузка (payload) передается транзитом без вмешательства, что сводит задержки и нагрузку на систему к минимуму.
 - Изменения применяются ко всем новым соединениям сразу после запуска и автоматически прекращаются при завершении работы.
+- Доступны сборки под популярные операционные системы: macOS, Windows и Linux.
 
 Платформы:
 - **macOS**  
@@ -71,25 +72,26 @@ Active Research & PoC 🦀
 - Файл конфигурации (config.yaml) — предназначен для более тонкой настройки внутренних параметров proxy-engine редко требующих оперативного изменения. Шаблон файла с примерами настроек (config_example.yaml) находится в корне проекта.
  
 **Список доступных CLI-аргументов**:  
-Если аргумент не указан, используются значения из config.yaml или значения по умолчанию.
+Полный список актуальных флагов и их описание можно посмотреть в терминале/консоли с помощью команды `--help`.  
+Если аргумент не указан явно, используются значения из config.yaml или значения по умолчанию.  
 
 - `APP`
-  - `--addr` - ip-адрес для прослушивания. (По умолчанию: `127.0.0.1`)
-  - `--port` - порт для прослушивания. (По умолчанию: `8080`)
-  - `--config` - путь к файлу конфигурации (YAML). (По умолчанию: `не указан`)
-  - `--silent` - настройка скрытия баннера и информационных сообщений в терминале: 'true', 'false'. (По умолчанию: `false`)
-  - `--log-level` - уровень детализации логов: `off`, `error`, `warn`, `info`, `debug`, `trace`. (По умолчанию: `info`)
+  - `--addr` - IP-адрес для прослушивания. (По умолчанию: `127.0.0.1`)
+  - `--port` - Порт для прослушивания. (По умолчанию: `8080`)
+  - `--config` - Путь к файлу конфигурации (YAML). (По умолчанию: `не указан`)
+  - `--silent` - Настройка скрытия баннера и информационных сообщений в терминале: 'true', 'false'. (По умолчанию: `false`)
+  - `--log-level` - Уровень детализации логов: `off`, `error`, `warn`, `info`, `debug`, `trace`. (По умолчанию: `info`)
 - `DNS`
-  - `--dns-mode` - режим работы DNS: `system`, `doh`, `dot`. (По умолчанию: `system`)
-  - `--dns-qtype` - тип запрашиваемых DNS записей: `ipv4`, `ipv6`, `all`. (По умолчанию: `ipv4`)
-  - `--dns-provider` - используемый провайдер для DoH/DoT: `google`, `cloudflare`, `quad9`. (По умолчанию: `google`)
+  - `--dns-mode` - Режим работы DNS: `system`, `doh`, `dot`. (По умолчанию: `system`)
+  - `--dns-qtype` - Тип запрашиваемых DNS записей: `ipv4`, `ipv6`, `all`. (По умолчанию: `ipv4`)
+  - `--dns-provider` - Используемый провайдер для DoH/DoT: `google`, `cloudflare`, `quad9`. (По умолчанию: `google`)
 - `HTTP`
-  - `--http-split-mode` - фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
+  - `--http-split-mode` - Фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
 - `HTTPS`
-  - `--https-split-mode` - фрагментация TLS-ClientHello: `none`, `fragment`. (По умолчанию: `none`)
-  - `--https-fake-ttl-mode` - стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
-  - `--https-fake-ttl-value` — значение TTL для режима `custom`. (По умолчанию: `0`, диапазон `0-255`)
-  - `--https-greased-padding` - динамическое изменение отпечатка (fingerprint) сессии путем повышения энтропии TLS-рукопожатия (GREASE & Padding): `true`, `false`. (По умолчанию: `false`) 
+  - `--https-split-mode` - Фрагментация TLS-ClientHello: `none`, `fragment`. (По умолчанию: `none`)
+  - `--https-fake-ttl-mode` - Стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
+  - `--https-fake-ttl-value` — Значение TTL для режима `custom`. (По умолчанию: `0`, диапазон `0-255`)
+  - `--https-greased-padding` - Динамическое изменение отпечатка (fingerprint) сессии путем повышения энтропии TLS-рукопожатия (GREASE & Padding): `true`, `false`. (По умолчанию: `false`) 
 
 ### Примеры запуска в CLI
 
@@ -111,7 +113,7 @@ Active Research & PoC 🦀
   > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
 
 - **Максимальный режим:**. Использование DNS-over-HTTPS (IPv4), фрагментации пакетов, кастомной подстройки TTL, изменение fingerprint.
-  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
 
 ### Детали реализации
 

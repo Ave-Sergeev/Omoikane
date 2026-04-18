@@ -205,8 +205,8 @@ impl TlsMangler {
         let is_tls_handshake = data.len() > 5 && data[0] == 0x16 && data[1] == 0x03;
 
         if is_tls_handshake {
-            let padded_data = TlsFingerprint::padding_encap(rng, data, config);
-            TlsFingerprint::shuffle_grease(rng, &padded_data)
+            let shuffled = TlsFingerprint::shuffle_grease(rng, data);
+            TlsFingerprint::transform_extensions(rng, &shuffled, config)
         } else {
             data.to_vec()
         }

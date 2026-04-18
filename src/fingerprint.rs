@@ -2,21 +2,19 @@ use crate::{rand::SmallRng, settings::TlsClientHelloShapingConfig};
 use log::trace;
 
 struct TlsContext<'a> {
+    has_sni: bool,
+    has_padding: bool,
     ext_len_pos: usize,
-    sni_slice: &'a [u8],
-    psk_slice: &'a [u8],
-    padding_slice: &'a [u8],
-    other_exts: Vec<&'a [u8]>,
+    all_extensions: Vec<&'a [u8]>,
 }
 
 impl Default for TlsContext<'_> {
     fn default() -> Self {
         Self {
+            has_sni: false,
+            has_padding: false,
             ext_len_pos: 0,
-            sni_slice: &[],
-            psk_slice: &[],
-            padding_slice: &[],
-            other_exts: Vec::with_capacity(32),
+            all_extensions: Vec::with_capacity(16),
         }
     }
 }
@@ -25,28 +23,52 @@ impl Default for TlsContext<'_> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExtensionType {
     Sni = 0x0000,
+    Psk = 0x0029,
     Alpn = 0x0010,
     Padding = 0x0015,
-    Psk = 0x0029,
-    SupportedVersions = 0x002B,
     KeyShare = 0x0033,
+    StatusRequest = 0x0005,
+    SessionTicket = 0x0023,
+    EcPointFormats = 0x000B,
+    RecordSizeLimit = 0x001C,
+    SupportedGroups = 0x000A,
+    SupportedVersions = 0x002B,
+    RenegotiationInfo = 0xFF01,
+    SignatureAlgorithms = 0x000D,
+    PskKeyExchangeModes = 0x002D,
+    CompressCertificate = 0x001B,
+    ExtendedMasterSecret = 0x0017,
+    DelegatedCredentials = 0x0022,
+    EncryptedClientHello = 0xFE0D,
+    QuicTransportParameters = 0x44CD,
+    SignedCertificateTimestamp = 0x0012,
 }
 
 impl ExtensionType {
     fn from_u16(value: u16) -> Option<Self> {
         match value {
             0x0000 => Some(Self::Sni),
+            0x0029 => Some(Self::Psk),
             0x0010 => Some(Self::Alpn),
             0x0015 => Some(Self::Padding),
-            0x0029 => Some(Self::Psk),
-            0x002B => Some(Self::SupportedVersions),
             0x0033 => Some(Self::KeyShare),
+            0x0005 => Some(Self::StatusRequest),
+            0x0023 => Some(Self::SessionTicket),
+            0x000B => Some(Self::EcPointFormats),
+            0x001C => Some(Self::RecordSizeLimit),
+            0x000A => Some(Self::SupportedGroups),
+            0xFF01 => Some(Self::RenegotiationInfo),
+            0x002B => Some(Self::SupportedVersions),
+            0x000D => Some(Self::SignatureAlgorithms),
+            0x001B => Some(Self::CompressCertificate),
+            0x002D => Some(Self::PskKeyExchangeModes),
+            0x0017 => Some(Self::ExtendedMasterSecret),
+            0x0022 => Some(Self::DelegatedCredentials),
+            0xFE0D => Some(Self::EncryptedClientHello),
+            0x44CD => Some(Self::QuicTransportParameters),
+            0x0012 => Some(Self::SignedCertificateTimestamp),
             _ => None,
         }
-    }
-
-    fn value(self) -> u16 {
-        self as u16
     }
 }
 
@@ -60,23 +82,12 @@ impl TlsFingerprint {
         0xEAEA, 0xFAFA,
     ];
 
-    /// Перемешивание существующих GREASE в полях Cipher Suites и Extensions
+    /// Перемешиваем существующие GREASE в Cipher Suites
     pub fn shuffle_grease(rng: &mut SmallRng, data: &[u8]) -> Vec<u8> {
-        let shuffle_in_place = |rng: &mut SmallRng, pos: &mut Vec<usize>, data: &mut [u8]| {
-            if pos.len() < 2 {
-                pos.clear();
-                return;
-            }
-
-            rng.shuffle_bytes_at(data, pos);
-            pos.clear();
-        };
-
+        // Начальная позиция после Record Header и Handshake Header
+        let mut index = Self::CLIENT_HELLO_BASE_LEN;
         let mut new_data = data.to_vec();
         let mut positions = Vec::with_capacity(16);
-        let mut inner_positions = Vec::with_capacity(16);
-
-        let mut index = Self::CLIENT_HELLO_BASE_LEN;
 
         // Пропускаем Session ID
         index = match Self::skip_u8_len(&new_data, index) {
@@ -84,7 +95,7 @@ impl TlsFingerprint {
             None => return new_data,
         };
 
-        // Блок Cipher Suites
+        // Перемешиваем GREASE в блоке Cipher Suites
         if let Some(slice) = new_data.get(index..index + 2) {
             let len = u16::from_be_bytes([slice[0], slice[1]]) as usize;
             let start = index + 2;
@@ -96,74 +107,40 @@ impl TlsFingerprint {
                     positions.push(curr);
                 }
             }
-            shuffle_in_place(rng, &mut positions, &mut new_data);
-            index = end;
-        }
 
-        // Пропуск Compression Methods
-        index = match Self::skip_u8_len(&new_data, index) {
-            Some(next_index) => next_index,
-            None => return new_data,
-        };
-
-        // Блок Extensions
-        if let Some(slice) = new_data.get(index..index + 2) {
-            let total_len = u16::from_be_bytes([slice[0], slice[1]]) as usize;
-            let mut curr = index + 2;
-            let end = (curr + total_len).min(new_data.len());
-
-            while curr + 3 < end {
-                let ext_type = u16::from_be_bytes([new_data[curr], new_data[curr + 1]]);
-                let ext_len = u16::from_be_bytes([new_data[curr + 2], new_data[curr + 3]]) as usize;
-                let body_start = curr + 4;
-                let body_end = (body_start + ext_len).min(end);
-
-                if Self::GREASE_VALUES.contains(&ext_type) {
-                    positions.push(curr);
-                }
-
-                let mut ptr = body_start;
-                if let Some(ExtensionType::Alpn | ExtensionType::SupportedVersions | ExtensionType::KeyShare) =
-                    ExtensionType::from_u16(ext_type)
-                    && ptr + 2 <= body_end
-                {
-                    ptr += 2;
-                }
-
-                while ptr + 1 < body_end {
-                    let val = u16::from_be_bytes([new_data[ptr], new_data[ptr + 1]]);
-                    if Self::GREASE_VALUES.contains(&val) {
-                        inner_positions.push(ptr);
-                    }
-                    ptr += 2;
-                }
-                curr = body_end;
+            if positions.len() >= 2 {
+                rng.shuffle_bytes_at(&mut new_data, &mut positions);
             }
-
-            shuffle_in_place(rng, &mut positions, &mut new_data);
-            shuffle_in_place(rng, &mut inner_positions, &mut new_data);
+            positions.clear();
         }
 
         new_data
     }
 
-    /// Пересобираем TLS-ClientHello (если возможно)
-    pub fn padding_encap(rng: &mut SmallRng, data: &[u8], config: &TlsClientHelloShapingConfig) -> Vec<u8> {
+    /// Модифицируем и пересобираем TLS-ClientHello (по возможности)
+    pub fn transform_extensions(rng: &mut SmallRng, data: &[u8], config: &TlsClientHelloShapingConfig) -> Vec<u8> {
         let Some(ctx) = Self::parse_tls_layout(data) else {
             trace!("Skipping padding transformation: Failed to parse TLS-layout");
             return data.to_vec();
         };
 
-        if ctx.sni_slice.is_empty() {
-            trace!("Skipping padding transformation: SNI not found OR Padding not found");
+        if !ctx.has_sni {
+            trace!("Skipping padding transformation: SNI not found");
             return data.to_vec();
         }
 
-        Self::transform_padding(rng, data, ctx, config)
+        // TODO: Убрать, чтоб в transform_tls_client_hello оставлять перемешивание, даже если нет Padding
+        if !ctx.has_padding {
+            trace!("Skipping padding transformation: Padding not found");
+            return data.to_vec();
+        }
+
+        Self::transform_tls_client_hello(rng, data, ctx, config)
     }
 
-    /// Разбираем структуру TLS-ClientHello на компоненты без копирования данных
+    /// Парсим TLS-ClientHello
     fn parse_tls_layout(data: &[u8]) -> Option<TlsContext<'_>> {
+        // Начальная позиция после Record Header и Handshake Header
         let mut index = Self::CLIENT_HELLO_BASE_LEN;
 
         index = Self::skip_u8_len(data, index)?; // Пропускаем Session ID
@@ -174,7 +151,7 @@ impl TlsFingerprint {
             return None;
         }
 
-        // Определяем границы блока расширений
+        // Определяем границы блока Extensions
         let total_ext_len = u16::from_be_bytes([data[index], data[index + 1]]) as usize;
         let mut curr = index + 2;
         let ext_end = curr + total_ext_len;
@@ -197,36 +174,47 @@ impl TlsFingerprint {
                 break;
             }
 
-            // SNI, Padding, PSK берем отдельно, остальное в общий список
+            // Перебираем Extensions, помечая что нашли SNI и Padding
             match ExtensionType::from_u16(etype) {
-                Some(ExtensionType::Sni) => ctx.sni_slice = &data[curr..curr + full_len],
-                Some(ExtensionType::Padding) => ctx.padding_slice = &data[curr..curr + full_len],
-                Some(ExtensionType::Psk) => ctx.psk_slice = &data[curr..curr + full_len],
-                _ => ctx.other_exts.push(&data[curr..curr + full_len]),
+                Some(ExtensionType::Sni) => {
+                    ctx.has_sni = true;
+                    ctx.all_extensions.push(&data[curr..curr + full_len]);
+                }
+                Some(ExtensionType::Padding) => {
+                    ctx.has_padding = true;
+                    ctx.all_extensions.push(&data[curr..curr + full_len]);
+                }
+                _ => ctx.all_extensions.push(&data[curr..curr + full_len]),
             }
             curr += full_len;
         }
         Some(ctx)
     }
 
-    /// Пересобираем TLS-ClientHello, c модификацией Padding и перемешиванием Extension
+    /// Пересобираем TLS-ClientHello, c модификацией Padding и перемешиванием содержимого некоторых Extension
     #[allow(clippy::cast_possible_truncation)]
-    fn transform_padding(
+    fn transform_tls_client_hello(
         rng: &mut SmallRng,
         data: &[u8],
         ctx: TlsContext,
         config: &TlsClientHelloShapingConfig,
     ) -> Vec<u8> {
         // Определяем целевой размер TLS-ClientHello
-        let target_total_len = if ctx.padding_slice.is_empty() {
-            data.len()
-        } else {
+        let target_total_len = {
+            let old_target = data.len();
             let (min, max) = if rng.gen_bool(config.light_profile_ratio) {
-                config.light_client_hello_size
+                config.light_client_hello_delta
             } else {
-                config.heavy_client_hello_size
+                config.heavy_client_hello_delta
             };
-            rng.gen_range_usize(min, max)
+
+            let mut target = old_target + rng.gen_range_usize(min, max);
+
+            if (256..=511).contains(&target) {
+                target = 512 + rng.gen_range_usize(min, max);
+            }
+
+            target.min(60000)
         };
 
         // Копируем изначальный TLS-ClientHello до блока Extensions
@@ -235,45 +223,51 @@ impl TlsFingerprint {
         final_data.extend_from_slice(&[0, 0]); // Заглушка под новую длину Extensions
         let ext_start_in_final = final_data.len();
 
-        // Добавляем SNI
-        final_data.extend_from_slice(ctx.sni_slice);
+        for ext in ctx.all_extensions {
+            let ext_type = u16::from_be_bytes([ext[0], ext[1]]);
 
-        // Добавляем остальные Extensions
-        for ext in ctx.other_exts {
-            final_data.extend_from_slice(ext);
-        }
-
-        // Добавляем Padding если был (с новым наполнением)
-        if !ctx.padding_slice.is_empty() {
-            let diff = target_total_len.saturating_sub(data.len());
-            let real_pad_payload_len = ctx.padding_slice.len().saturating_sub(4);
-            let total_pad_len = real_pad_payload_len + diff;
-
-            // Выбираем тип Padding
-            let padding_type = if rng.gen_bool(config.grease_ratio) {
-                let grease_val = Self::GREASE_VALUES[rng.gen_range_usize(0, Self::GREASE_VALUES.len() - 1)];
-                grease_val.to_be_bytes()
-            } else {
-                ExtensionType::Padding.value().to_be_bytes()
+            let mut shuffle_and_extend = |offset: usize, ext_type: ExtensionType| {
+                let mut shuffled_ext = ext.to_vec();
+                Self::shuffle_u16_chunks(rng, &mut shuffled_ext, offset, ext_type);
+                final_data.extend_from_slice(&shuffled_ext);
             };
 
-            final_data.extend_from_slice(&padding_type); // Докидываем тип Padding
-            final_data.extend_from_slice(&(total_pad_len as u16).to_be_bytes()); // Докидываем длину
+            match ext_type {
+                // Расширяем найденный Padding
+                0x0015 => {
+                    let diff = target_total_len.saturating_sub(data.len());
+                    let real_pad_payload_len = ext.len().saturating_sub(4);
+                    let total_pad_len = real_pad_payload_len + diff;
 
-            // Забиваем значениями
-            let padding_bytes = (0..total_pad_len).map(|_| {
-                if rng.gen_bool(config.padding_entropy_ratio) {
-                    rng.gen_range_usize(0, 256) as u8
-                } else {
-                    0_u8
+                    // Выбираем тип Padding
+                    let padding_type = if rng.gen_bool(config.grease_ratio) {
+                        let grease_val = Self::GREASE_VALUES[rng.gen_range_usize(0, Self::GREASE_VALUES.len() - 1)];
+                        grease_val.to_be_bytes()
+                    } else {
+                        [0x00, 0x15]
+                    };
+
+                    final_data.extend_from_slice(&padding_type);
+                    final_data.extend_from_slice(&(total_pad_len as u16).to_be_bytes());
+
+                    // Заполняем Padding
+                    let padding_bytes = (0..total_pad_len).map(|_| {
+                        if rng.gen_bool(config.padding_entropy_ratio) {
+                            rng.gen_range_usize(0, 256) as u8
+                        } else {
+                            0_u8
+                        }
+                    });
+
+                    final_data.extend(padding_bytes);
                 }
-            });
-            final_data.extend(padding_bytes);
-        }
-
-        // PSK в конце
-        if !ctx.psk_slice.is_empty() {
-            final_data.extend_from_slice(ctx.psk_slice);
+                // Премешиваем содержимое Supported Groups (0x000a) и Supported Versions (0x002b)
+                0x000a => shuffle_and_extend(6, ExtensionType::SupportedGroups),
+                0x002b => shuffle_and_extend(5, ExtensionType::SupportedVersions),
+                _ => {
+                    final_data.extend_from_slice(ext);
+                }
+            }
         }
 
         // Корректируем длины в заголовках
@@ -302,6 +296,38 @@ impl TlsFingerprint {
         final_data[6..9].copy_from_slice(&hlb[1..4]);
 
         final_data
+    }
+
+    fn shuffle_u16_chunks(rng: &mut SmallRng, data: &mut [u8], start_offset: usize, ext_type: ExtensionType) {
+        let total_len = data.len();
+        if total_len <= start_offset {
+            return;
+        }
+
+        let payload_len = total_len - start_offset;
+        let chunks_count = payload_len / 2;
+
+        if chunks_count > 1 {
+            let protected = match ext_type {
+                ExtensionType::SupportedVersions => 2, // Для SupportedVersions не меняем первые два
+                _ => 0,                                // Для SupportedGroups перемешиваем все
+            };
+
+            if chunks_count > protected {
+                for i in (protected..chunks_count).rev() {
+                    let j = rng.gen_range_usize(protected, i);
+                    if i != j {
+                        let p1 = start_offset + (i * 2);
+                        let p2 = start_offset + (j * 2);
+
+                        if p1 + 1 < total_len && p2 + 1 < total_len {
+                            data.swap(p1, p2);
+                            data.swap(p1 + 1, p2 + 1);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn skip_u8_len(data: &[u8], pos: usize) -> Option<usize> {
