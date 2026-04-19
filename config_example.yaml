@@ -1,6 +1,6 @@
 # CliArgs
 args:
-  addr: 127.0.0.1
+  ip: 127.0.0.1
   port: 8080
   silent: false
   log_level: info

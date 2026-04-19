@@ -4,6 +4,7 @@ use crate::settings::{CliArgs, TlsClientHelloShapingConfig, TlsFragmentationConf
 use log::trace;
 use socket2::SockRef;
 use std::io;
+use std::net::SocketAddr;
 use thiserror::Error;
 use tls_parser::{TlsExtension, TlsMessage, TlsMessageHandshake, parse_tls_extensions, parse_tls_plaintext};
 use tokio::io::AsyncRead;
@@ -80,33 +81,32 @@ impl TlsMangler {
         fake_ttl: u32,
     ) -> Result<(), TlsManglerError> {
         let peer_addr = target.peer_addr()?;
-        let is_ipv4 = peer_addr.is_ipv4();
 
         let original_ttl = {
-            let sock = SockRef::from(&target);
+            let sock = SockRef::from(&*target);
 
-            if is_ipv4 {
-                let old_ttl = sock.ttl_v4()?;
-                sock.set_ttl_v4(fake_ttl)?;
-                old_ttl
-            } else {
-                let old_ttl = sock.unicast_hops_v6()?;
-                sock.set_unicast_hops_v6(fake_ttl)?;
-                old_ttl
+            match peer_addr {
+                SocketAddr::V4(_) => {
+                    let old_ttl = sock.ttl_v4()?;
+                    sock.set_ttl_v4(fake_ttl)?;
+                    old_ttl
+                }
+                SocketAddr::V6(_) => {
+                    let old_ttl = sock.unicast_hops_v6()?;
+                    sock.set_unicast_hops_v6(fake_ttl)?;
+                    old_ttl
+                }
             }
         };
 
-        // Сервер переотправит TLS-header через Retransmission уже с нормальным TLL
-        target.write_all(&data[0..5]).await?;
+        // TLS-header переотправится через Retransmission уже с нормальным TLL
+        target.write_all(data).await?;
         target.flush().await?;
 
-        {
-            let sock = SockRef::from(&*target);
-            if is_ipv4 {
-                sock.set_ttl_v4(original_ttl)?;
-            } else {
-                sock.set_unicast_hops_v6(original_ttl)?;
-            }
+        let sock = SockRef::from(&*target);
+        match peer_addr {
+            SocketAddr::V4(_) => sock.set_ttl_v4(original_ttl)?,
+            SocketAddr::V6(_) => sock.set_unicast_hops_v6(original_ttl)?,
         }
 
         Ok(())
@@ -129,16 +129,13 @@ impl TlsMangler {
             && let Ok((host, sni_range)) = Self::find_sni_with_range(data)
         {
             trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
-
-            let (rand_jitter, rand_sni_offset) = {
-                (
-                    rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
-                    rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
-                )
-            };
-
             let mut current_pos = 0;
             let total_len = data.len();
+
+            let (rand_jitter, rand_sni_offset) = (
+                rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
+                rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
+            );
 
             match args.https_fake_ttl_mode {
                 TtlStrategy::None => {

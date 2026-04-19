@@ -1,4 +1,6 @@
+use crate::settings::CliArgs;
 use crate::silent;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 use thiserror::Error;
 #[cfg(target_os = "windows")]
@@ -30,8 +32,10 @@ pub struct NetworkManager;
 impl NetworkManager {
     /// Установка режима работы системного прокси (вкл/выкл)
     #[cfg(target_os = "macos")]
-    pub fn set_proxy_mode(enable: bool) -> Result<(), NetworkError> {
+    pub fn set_proxy_mode(cli_args: &CliArgs, enable: bool) -> Result<(), NetworkError> {
         let interface = Self::detect_active_interface()?;
+        let proxy_ip = &cli_args.ip;
+        let proxy_port = cli_args.port.to_string();
 
         let run_cmd = |args: &[&str]| -> Result<(), NetworkError> {
             let status = Command::new("networksetup").args(args).status()?;
@@ -43,9 +47,9 @@ impl NetworkManager {
 
         if enable {
             silent!("\nProxy setup for [{interface}]");
-            run_cmd(&["-setwebproxy", &interface, "127.0.0.1", "8080"])?;
+            run_cmd(&["-setwebproxy", &interface, proxy_ip, &proxy_port])?;
             silent!(" ├─ HTTP proxy:  [Enabled]");
-            run_cmd(&["-setsecurewebproxy", &interface, "127.0.0.1", "8080"])?;
+            run_cmd(&["-setsecurewebproxy", &interface, proxy_ip, &proxy_port])?;
             silent!(" └─ HTTPS proxy: [Enabled]");
             silent!("\nPress `CTRL+C` to stop proxy\n");
         } else {
@@ -73,23 +77,25 @@ impl NetworkManager {
 
     /// Установка режима работы системного прокси (вкл/выкл)
     #[cfg(target_os = "windows")]
-    pub fn set_proxy_mode(enable: bool) -> Result<(), NetworkError> {
+    pub fn set_proxy_mode(cli_args: &CliArgs, enable: bool) -> Result<(), NetworkError> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let path = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
         let key = hkcu
             .open_subkey_with_flags(path, KEY_WRITE)
-            .map_err(|e| NetworkError::CommandFailed(e.to_string()))?;
+            .map_err(|err| NetworkError::CommandFailed(err.to_string()))?;
 
         if enable {
             silent!("\nProxy setup for Windows System");
+            let proxy_addr = format!("{}:{}", cli_args.ip, cli_args.port);
+
             key.set_value("ProxyEnable", &1u32)
-                .map_err(|e| NetworkError::CommandFailed(e.to_string()))?;
-            key.set_value("ProxyServer", &"127.0.0.1:8080")
-                .map_err(|e| NetworkError::CommandFailed(e.to_string()))?;
+                .map_err(|err| NetworkError::CommandFailed(err.to_string()))?;
+            key.set_value("ProxyServer", &proxy_addr)
+                .map_err(|err| NetworkError::CommandFailed(err.to_string()))?;
             silent!(" └─ HTTP/HTTPS proxy: [Enabled]");
         } else {
             key.set_value("ProxyEnable", &0u32)
-                .map_err(|e| NetworkError::CommandFailed(e.to_string()))?;
+                .map_err(|err| NetworkError::CommandFailed(err.to_string()))?;
             silent!("\nProxy configuration has been [Disabled]");
         }
 
@@ -115,7 +121,7 @@ impl NetworkManager {
 
     /// Установка режима работы системного прокси (вкл/выкл)
     #[cfg(target_os = "linux")]
-    pub fn set_proxy_mode(enable: bool) -> Result<(), NetworkError> {
+    pub fn set_proxy_mode(cli_args: &CliArgs, enable: bool) -> Result<(), NetworkError> {
         let run_gsettings = |args: &[&str]| -> Result<(), NetworkError> {
             let status = Command::new("gsettings").args(args).status()?;
             if !status.success() {
@@ -124,12 +130,15 @@ impl NetworkManager {
             Ok(())
         };
 
+        let ip = &cli_args.ip;
+        let port_str = cli_args.port.to_string(); // gsettings примет это как аргумент командной строки
+
         if enable {
             silent!("\nProxy setup for [System-wide GNOME/Linux]");
-            run_gsettings(&["set", "org.gnome.system.proxy.http", "host", "127.0.0.1"])?;
-            run_gsettings(&["set", "org.gnome.system.proxy.http", "port", "8080"])?;
-            run_gsettings(&["set", "org.gnome.system.proxy.https", "host", "127.0.0.1"])?;
-            run_gsettings(&["set", "org.gnome.system.proxy.https", "port", "8080"])?;
+            run_gsettings(&["set", "org.gnome.system.proxy.http", "host", ip])?;
+            run_gsettings(&["set", "org.gnome.system.proxy.http", "port", &port_str])?;
+            run_gsettings(&["set", "org.gnome.system.proxy.https", "host", ip])?;
+            run_gsettings(&["set", "org.gnome.system.proxy.https", "port", &port_str])?;
             run_gsettings(&["set", "org.gnome.system.proxy", "mode", "manual"])?;
             silent!(" ├─ HTTP proxy:  [Enabled]");
             silent!(" └─ HTTPS proxy: [Enabled]");

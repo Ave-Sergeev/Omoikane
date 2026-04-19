@@ -77,7 +77,7 @@ You can view the full list of available flags and their descriptions by running 
 If an argument is not explicitly provided, values from config.yaml or default settings will be used.  
 
 - `APP`
-  - `--addr` - IP address to listen on. (Default: `127.0.0.1`)
+  - `--ip` - IP address to listen on. (Default: `127.0.0.1`)
   - `--port` - Port to listen on. (Default: `8080`)
   - `--config` - Path to the configuration file (YAML). (Default: `not set`)
   - `--silent` - Hides the banner and informational messages in the terminal: 'true', 'false'. (Default: `false`)
@@ -107,7 +107,7 @@ Network conditions vary by provider. If the default settings do not yield the de
     > ./<path_to_binary_file>
 
   Full command (explicitly defined parameters):
-    > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
+    > ./<path_to_binary_file> -i 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
 
 - **Moderate Mode:** Enables packet fragmentation and Cloudflare DNS-over-TLS (IPv4) to bypass simple restrictions.
   > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment

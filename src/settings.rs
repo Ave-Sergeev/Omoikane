@@ -78,9 +78,9 @@ pub struct RawCliArgs {
     pub config_path: Option<std::path::PathBuf>,
 
     /// IP-адрес для прослушивания.
-    #[arg(short = 'a', long = "addr", help_heading = "APP")]
-    #[serde(rename = "args.addr", skip_serializing_if = "Option::is_none")]
-    pub addr: Option<String>,
+    #[arg(short = 'i', long = "ip", help_heading = "APP")]
+    #[serde(rename = "args.ip", skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
 
     /// Порт для приема входящих соединений.
     #[arg(short = 'p', long = "port", help_heading = "APP")]
@@ -142,7 +142,7 @@ impl From<RawCliArgs> for CliArgs {
     fn from(raw: RawCliArgs) -> Self {
         let default = CliArgs::default();
         Self {
-            addr: raw.addr.unwrap_or(default.addr),
+            ip: raw.ip.unwrap_or(default.ip),
             port: raw.port.unwrap_or(default.port),
             silent: raw.silent.unwrap_or(default.silent),
             log_level: raw.log_level.unwrap_or(default.log_level),
@@ -160,7 +160,7 @@ impl From<RawCliArgs> for CliArgs {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CliArgs {
-    pub addr: String,
+    pub ip: String,
     pub port: u16,
     pub silent: bool,
     pub log_level: LogLevel,
@@ -177,7 +177,7 @@ pub struct CliArgs {
 impl Default for CliArgs {
     fn default() -> Self {
         Self {
-            addr: "127.0.0.1".into(),
+            ip: "127.0.0.1".into(),
             port: 8080,
             silent: false,
             log_level: LogLevel::Info,

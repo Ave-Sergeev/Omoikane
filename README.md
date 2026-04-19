@@ -76,7 +76,7 @@ Active Research & PoC 🦀
 Если аргумент не указан явно, используются значения из config.yaml или значения по умолчанию.  
 
 - `APP`
-  - `--addr` - IP-адрес для прослушивания. (По умолчанию: `127.0.0.1`)
+  - `--ip` - IP-адрес для прослушивания. (По умолчанию: `127.0.0.1`)
   - `--port` - Порт для прослушивания. (По умолчанию: `8080`)
   - `--config` - Путь к файлу конфигурации (YAML). (По умолчанию: `не указан`)
   - `--silent` - Настройка скрытия баннера и информационных сообщений в терминале: 'true', 'false'. (По умолчанию: `false`)
@@ -107,7 +107,7 @@ Active Research & PoC 🦀
     > ./<path_to_binary_file>
   
   Полная запись (явное указание параметров):  
-    > ./<path_to_binary_file> -a 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
+    > ./<path_to_binary_file> -i 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
 
 - **Умеренный режим:**. Включает фрагментацию пакетов, Сloudflare DNS-over-TLS (IPv4) для обхода простых ограничений.
   > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment

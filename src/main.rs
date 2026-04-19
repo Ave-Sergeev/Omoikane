@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
     // Загрузка конфигурации (CliArgs, YAML)
     let settings = Settings::new()?;
 
-    let args = &settings.args;
+    let args = settings.args.clone();
     let engine = &settings.engine;
     let max_conns = engine.max_concurrent_connections;
     let session_duration = Duration::from_secs(engine.max_session_duration_secs);
@@ -49,10 +49,10 @@ async fn main() -> anyhow::Result<()> {
     init_logger(&args.log_level);
 
     // Отрисовка баннера и текущих настроек в терминале
-    print_app_info(args);
+    print_app_info(&args);
 
     // Применение сетевых настроек на уровне ОС
-    NetworkManager::set_proxy_mode(true)?;
+    NetworkManager::set_proxy_mode(&args, true)?;
 
     // Инициализация DNS-resolver
     let resolver = DnsResolver::new(&args.dns_mode, &args.dns_qtype, &args.dns_provider);
@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     let app_state = Arc::new(AppState { settings, resolver });
 
     // Инициализация TCP-listener для обработки входящих подключений
-    let addr = format!("{}:{}", &app_state.settings.args.addr, &app_state.settings.args.port);
+    let addr = format!("{}:{}", &app_state.settings.args.ip, &app_state.settings.args.port);
     let listener = TcpListener::bind(addr).await?;
     info!("Listener is running on port: {}", &app_state.settings.args.port);
 
@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
     info!("All connections closed. Shutdown complete.");
 
     // Откат сетевых настроек ОС в исходное состояние
-    NetworkManager::set_proxy_mode(false)?;
+    NetworkManager::set_proxy_mode(&args, false)?;
 
     Ok(())
 }
@@ -186,7 +186,7 @@ fn print_app_info(args: &CliArgs) {
     };
 
     println!("\nAPP:");
-    println!("  • {:<16} : {}", "ADDR", args.addr);
+    println!("  • {:<16} : {}", "IP", args.ip);
     println!("  • {:<16} : {}", "PORT", args.port);
     println!("  • {:<16} : {:?}", "LOG LEVEL", args.log_level);
     println!("DNS:");
