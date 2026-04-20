@@ -261,12 +261,14 @@ impl Default for HttpFragmentationConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TlsClientHelloShapingConfig {
-    /// Вероятность использования GREASE вместо обычного Padding (0.0 — 1.0).
-    pub grease_ratio: f64,
+    /// Вероятность смены на верхний регистр каждой буквы в SNI (0.0 — 1.0).
+    pub sni_case_ratio: f64,
+    /// Вероятность замены type Padding на GREASE (0.0 — 1.0).
+    pub grease_type_ratio: f64,
+    /// Вероятность появления случайного байта в наполнении Padding (0.0 — 1.0).
+    pub byte_entropy_ratio: f64,
     /// Вероятность выбора "легкого" профиля (0.0 — 1.0).
     pub light_profile_ratio: f64,
-    ///  Вероятность появления случайного байта в наполнении Padding (0.0 — 1.0).
-    pub padding_entropy_ratio: f64,
     /// Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для легкого профиля (байт).
     pub light_client_hello_delta: (usize, usize),
     /// Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для тяжелого профиля (байт).
@@ -276,9 +278,10 @@ pub struct TlsClientHelloShapingConfig {
 impl Default for TlsClientHelloShapingConfig {
     fn default() -> Self {
         Self {
-            grease_ratio: 0.15,
+            sni_case_ratio: 0.1,
+            grease_type_ratio: 0.15,
+            byte_entropy_ratio: 0.15,
             light_profile_ratio: 0.75,
-            padding_entropy_ratio: 0.15,
             light_client_hello_delta: (194, 520),
             heavy_client_hello_delta: (780, 1850),
         }
