@@ -42,6 +42,7 @@ enum ExtensionType {
     EncryptedClientHello = 0xFE0D,
     QuicTransportParameters = 0x44CD,
     SignedCertificateTimestamp = 0x0012,
+    Grease,
 }
 
 impl ExtensionType {
@@ -67,6 +68,7 @@ impl ExtensionType {
             0xFE0D => Some(Self::EncryptedClientHello),
             0x44CD => Some(Self::QuicTransportParameters),
             0x0012 => Some(Self::SignedCertificateTimestamp),
+            val if val & 0x0F0F == 0x0A0A => Some(ExtensionType::Grease),
             _ => None,
         }
     }
@@ -77,6 +79,7 @@ pub struct TlsFingerprint;
 impl TlsFingerprint {
     // Record Header (5) + Handshake Header (4) + Version (2) + Client Random (32) = 43
     const CLIENT_HELLO_BASE_LEN: usize = 43;
+    const SNI_HOST_OFFSET: usize = 9;
     const GREASE_VALUES: [u16; 16] = [
         0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A, 0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA, 0xDADA,
         0xEAEA, 0xFAFA,
@@ -175,23 +178,18 @@ impl TlsFingerprint {
             }
 
             // Перебираем Extensions, помечая что нашли SNI и Padding
+            ctx.all_extensions.push(&data[curr..curr + full_len]);
             match ExtensionType::from_u16(etype) {
-                Some(ExtensionType::Sni) => {
-                    ctx.has_sni = true;
-                    ctx.all_extensions.push(&data[curr..curr + full_len]);
-                }
-                Some(ExtensionType::Padding) => {
-                    ctx.has_padding = true;
-                    ctx.all_extensions.push(&data[curr..curr + full_len]);
-                }
-                _ => ctx.all_extensions.push(&data[curr..curr + full_len]),
+                Some(ExtensionType::Sni) => ctx.has_sni = true,
+                Some(ExtensionType::Padding) => ctx.has_padding = true,
+                _ => {}
             }
             curr += full_len;
         }
         Some(ctx)
     }
 
-    /// Пересобираем TLS-ClientHello, c модификацией Padding и перемешиванием содержимого некоторых Extension
+    /// Пересобираем TLS-ClientHello, c модификацией Padding и некоторых Extension
     #[allow(clippy::cast_possible_truncation)]
     fn transform_tls_client_hello(
         rng: &mut SmallRng,
@@ -232,38 +230,61 @@ impl TlsFingerprint {
                 final_data.extend_from_slice(&shuffled_ext);
             };
 
-            match ext_type {
+            match ExtensionType::from_u16(ext_type) {
                 // Расширяем найденный Padding
-                0x0015 => {
+                Some(ExtensionType::Padding) => {
                     let diff = target_total_len.saturating_sub(data.len());
                     let real_pad_payload_len = ext.len().saturating_sub(4);
                     let total_pad_len = real_pad_payload_len + diff;
 
                     // Выбираем тип Padding
-                    let padding_type = if rng.gen_bool(config.grease_ratio) {
-                        let grease_val = Self::GREASE_VALUES[rng.gen_range_usize(0, Self::GREASE_VALUES.len() - 1)];
-                        grease_val.to_be_bytes()
+                    let new_padding_type = if rng.gen_bool(config.grease_type_ratio) {
+                        Self::GREASE_VALUES[rng.gen_range_usize(0, Self::GREASE_VALUES.len() - 1)].to_be_bytes()
                     } else {
                         [0x00, 0x15]
                     };
 
-                    final_data.extend_from_slice(&padding_type);
+                    final_data.extend_from_slice(&new_padding_type);
                     final_data.extend_from_slice(&(total_pad_len as u16).to_be_bytes());
 
                     // Заполняем Padding
-                    let padding_bytes = (0..total_pad_len).map(|_| {
-                        if rng.gen_bool(config.padding_entropy_ratio) {
+                    let payload = (0..total_pad_len).map(|_| {
+                        if rng.gen_bool(config.byte_entropy_ratio) {
                             rng.gen_range_usize(0, 256) as u8
                         } else {
                             0_u8
                         }
                     });
 
-                    final_data.extend(padding_bytes);
+                    final_data.extend(payload);
                 }
-                // Премешиваем содержимое Supported Groups (0x000a) и Supported Versions (0x002b)
-                0x000a => shuffle_and_extend(6, ExtensionType::SupportedGroups),
-                0x002b => shuffle_and_extend(5, ExtensionType::SupportedVersions),
+                // Применяем Uppercase Randomization к SNI
+                Some(ExtensionType::Sni) => {
+                    if config.sni_case_ratio > 0.0 {
+                        let mut modified_ext = ext.to_vec();
+                        let host_start = Self::SNI_HOST_OFFSET;
+                        let host_end = modified_ext.len();
+
+                        if host_end > host_start {
+                            for byte in &mut modified_ext[host_start..host_end] {
+                                if byte.is_ascii_alphabetic() && rng.gen_bool(config.sni_case_ratio) {
+                                    byte.make_ascii_uppercase();
+                                }
+                            }
+                        }
+                        final_data.extend_from_slice(&modified_ext);
+                    } else {
+                        final_data.extend_from_slice(ext);
+                    }
+                }
+                // Премешиваем содержимое Supported Groups и Supported Versions
+                Some(ext_type @ (ExtensionType::SupportedGroups | ExtensionType::SupportedVersions)) => {
+                    match (ext_type, config.shuffle_enabled) {
+                        (ExtensionType::SupportedGroups, true) => shuffle_and_extend(6, ext_type),
+                        (ExtensionType::SupportedVersions, true) => shuffle_and_extend(5, ext_type),
+                        _ => final_data.extend_from_slice(ext),
+                    }
+                }
                 _ => {
                     final_data.extend_from_slice(ext);
                 }

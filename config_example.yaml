@@ -57,12 +57,16 @@ engine:
     chunk_size: [24, 148]
   # Настройки формирования TLS-ClientHello (при --https-greased-padding true)
   tls_client_hello_shaping:
-    # Вероятность использования GREASE вместо обычного Padding (0.0 — 1.0).
-    grease_ratio: 0.15
-    # Вероятность выбора "легкого" профиля (0.0 - 1.0).
-    light_profile_ratio: 0.75
+    # Включение перемешивания Supported Groups и Supported Versions.
+    shuffle_enabled: true
+    # Вероятность смены на верхний регистр каждой буквы в SNI (0.0 — без изменений, 1.0 — все заглавные).
+    sni_case_ratio: 0.1
+    # Вероятность замены type Padding на GREASE (0.0 — без замены, 1.0 — всегда замена).
+    grease_type_ratio: 0.15
     # Вероятность появления случайного байта в наполнении Padding (0.0 — только нули, 1.0 — только случайные).
-    padding_entropy_ratio: 0.15
+    byte_entropy_ratio: 0.15
+    # Вероятность выбора "легкого" профиля (0.0 — 1.0).
+    light_profile_ratio: 0.75
     # Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для легкого профиля (байт).
     light_client_hello_delta: [194, 520]
     # Диапазон добавки (дельты) к размеру исходного TLS-ClientHello для тяжелого профиля (байт).
