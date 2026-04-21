@@ -88,11 +88,11 @@ If an argument is not explicitly provided, values from config.yaml or default se
   - `--dns-provider` - Provider used for DoH/DoT: `google`, `cloudflare`, `quad9`. (Default: `google`)
 - `HTTP`
   - `--http-split-mode` - HTTP request fragmentation: `none`, `fragment`. (Default: `none`)
-- `HTTPS`
-  - `--https-split-mode` - TLS ClientHello fragmentation: `none`, `fragment`. (Default: `none`)
-  - `--https-fake-ttl-mode` - TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
-  - `--https-fake-ttl-value` - TTL value for `custom` mode. (Default: `0`, range: `1-255`)
-  - `--https-greased-padding` - Dynamic modification of the session fingerprint by increasing TLS handshake entropy (GREASE & Padding): `true`, `false`. (Default: `false`)
+- `HTTPS (TLS)`
+  - `--tls-split-mode` - TLS ClientHello fragmentation: `none`, `sni`, `random`. (Default: `none`)
+  - `--tls-fake-ttl-mode` - TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
+  - `--tls-fake-ttl-value` - TTL value for `custom` mode. (Default: `0`, range: `1-255`)
+  - `--tls-greased-padding` - Dynamic modification of the session fingerprint by increasing TLS handshake entropy (GREASE & Padding): `true`, `false`. (Default: `false`)
 
 ### CLI Usage Examples
 
@@ -107,13 +107,13 @@ Network conditions vary by provider. If the default settings do not yield the de
     > ./<path_to_binary_file>
 
   Full command (explicitly defined parameters):
-    > ./<path_to_binary_file> -i 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
+    > ./<path_to_binary_file> -i 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --tls-split-mode none --tls-fake-ttl-mode none
 
 - **Moderate Mode:** Enables packet fragmentation and Cloudflare DNS-over-TLS (IPv4) to bypass simple restrictions.
-  > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
+  > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --tls-split-mode random
 
 - **Maximum Mode:** Using DNS-over-HTTPS (IPv4), packet fragmentation, custom TTL adjustment, and fingerprint modification.
-  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --tls-split-mode sni --tls-fake-ttl-mode custom --tls-fake-ttl-value 1 --tls-greased-padding true
 
 ### Implementation Details
 

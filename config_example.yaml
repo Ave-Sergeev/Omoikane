@@ -2,16 +2,26 @@
 args:
   ip: 127.0.0.1
   port: 8080
+  # `true`, `false`.
   silent: false
+  # `off`, `error`, `warn`, `info`, `debug`, `trace`.
   log_level: info
+  # `system`, `doh`, `dot`.
   dns_mode: system
+  # `google`, `cloudflare`, `quad9`.
   dns_provider: google
+  # `ipv4`, `ipv6`, `all`.
   dns_qtype: ipv4
+  # `none`, `fragment`.
   http_split_mode: none
-  https_split_mode: none
-  https_fake_ttl_mode: none
-  https_fake_ttl_value: 0
-  https_greased_padding: false
+  # `none`, `sni`, `random`.
+  tls_split_mode: none
+  # `none`, `custom`.
+  tls_fake_ttl_mode: none
+  # `0-255`.
+  tls_fake_ttl_value: 0
+  # `true`, `false`.
+  tls_greased_padding: false
 
 # EngineConfig
 engine:
@@ -35,16 +45,6 @@ engine:
     interval_secs: 5
     # Количество неудачных попыток до разрыва соединения.
     retries: 3
-  # Настройки фрагментации TLS-ClientHello (диапазоны [min, max]) (при --https-split-mode fragment)
-  tls_fragmentation:
-    # Jitter для первого фрагмента (мс).
-    first_jitter_ms: [1, 5]
-    # Jitter для критической зоны SNI (мс).
-    chunk_jitter_ms: [1, 5]
-    # Смещение (до/после) для критической зоны SNI (байт).
-    sni_offset: [1, 5]
-    # Диапазон размеров чанков для критической зоны SNI (байт).
-    chunk_size: [1, 6]
   # Настройки фрагментации HTTP-headers (диапазоны [min, max]) (при --http-split-mode fragment)
   http_fragmentation:
     # Jitter для первого фрагмента (мс).
@@ -55,7 +55,23 @@ engine:
     first_offset: [1, 5]
     # Диапазон размеров чанков для последующих данных (байт).
     chunk_size: [24, 148]
-  # Настройки формирования TLS-ClientHello (при --https-greased-padding true)
+  # Настройки SNI фрагментации в TLS-ClientHello (диапазоны [min, max]) (при --tls-split-mode sni)
+  tls_fragmentation_sni:
+    # Jitter для первого фрагмента (мс).
+    first_jitter_ms: [1, 8]
+    # Jitter для критической зоны SNI (мс).
+    chunk_jitter_ms: [1, 5]
+    # Смещение (до/после) для критической зоны SNI (байт).
+    sni_offset: [1, 5]
+    # Диапазон размеров чанков для критической зоны SNI (байт).
+    chunk_size: [1, 6]
+  # Настройки Random фрагментации в TLS-ClientHello (диапазоны [min, max]) (при --tls-split-mode random)
+  tls_fragmentation_random:
+    # Jitter для чанков (мс).
+    chunk_jitter_ms: [1, 5]
+    # Диапазон размеров чанков (байт).
+    chunk_size: [15, 55]
+  # Настройки формирования TLS-ClientHello (при --tls-greased-padding true)
   tls_client_hello_shaping:
     # Включение перемешивания Supported Groups и Supported Versions.
     shuffle_enabled: true

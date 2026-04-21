@@ -19,8 +19,8 @@ pub enum SettingsError {
 #[serde(rename_all = "lowercase")]
 #[clap(rename_all = "lowercase")]
 pub enum DnsMode {
-    DoT,    // Использовать протокол DoT (DNS over TLS)
-    DoH,    // Использовать протокол DoH (DNS over HTTPS)
+    DoT,    // Использовать протокол DoT (DNS-over-TLS)
+    DoH,    // Использовать протокол DoH (DNS-over-HTTPS)
     System, // Использовать системный резолвер (Google DNS)
 }
 
@@ -45,9 +45,18 @@ pub enum DnsQType {
 #[derive(ValueEnum, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[clap(rename_all = "lowercase")]
-pub enum SplitMode {
+pub enum HttpSplitMode {
     None,     // Не использовать фрагментацию
     Fragment, // Разделять на фрагменты
+}
+
+#[derive(ValueEnum, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[clap(rename_all = "lowercase")]
+pub enum TlsSplitMode {
+    None,   // Не использовать фрагментацию
+    Sni,    // Фрагментировать SNI + окрестности
+    Random, // Фрагментировать рандомными чанками
 }
 
 #[derive(ValueEnum, Clone, Debug, Serialize, Deserialize)]
@@ -115,27 +124,27 @@ pub struct RawCliArgs {
     /// Способ фрагментации `HTTP-request`: "none", "fragment".
     #[arg(value_enum, long = "http-split-mode", help_heading = "HTTP")]
     #[serde(rename = "args.http_split_mode", skip_serializing_if = "Option::is_none")]
-    pub http_split_mode: Option<SplitMode>,
+    pub http_split_mode: Option<HttpSplitMode>,
 
-    /// Способ фрагментации `TLS-ClientHello`: "none", "fragment".
-    #[arg(value_enum, long = "https-split-mode", help_heading = "HTTPS")]
-    #[serde(rename = "args.https_split_mode", skip_serializing_if = "Option::is_none")]
-    pub https_split_mode: Option<SplitMode>,
+    /// Способ фрагментации `TLS-ClientHello`: "none", "sni", "random".
+    #[arg(value_enum, long = "tls-split-mode", help_heading = "HTTPS")]
+    #[serde(rename = "args.tls_split_mode", skip_serializing_if = "Option::is_none")]
+    pub tls_split_mode: Option<TlsSplitMode>,
 
     /// Стратегия работы с `TTL` для фейк пакетов: "none", "custom".
-    #[arg(value_enum, long = "https-fake-ttl-mode", help_heading = "HTTPS")]
-    #[serde(rename = "args.https_fake_ttl_mode", skip_serializing_if = "Option::is_none")]
-    pub https_fake_ttl_mode: Option<TtlStrategy>,
+    #[arg(value_enum, long = "tls-fake-ttl-mode", help_heading = "HTTPS")]
+    #[serde(rename = "args.tls_fake_ttl_mode", skip_serializing_if = "Option::is_none")]
+    pub tls_fake_ttl_mode: Option<TtlStrategy>,
 
     /// Конкретное значение `TTL` (для стратегии "custom").
-    #[arg(long = "https-fake-ttl-value", value_parser = clap::value_parser!(u8).range(0..=255), help_heading = "HTTPS")]
-    #[serde(rename = "args.https_fake_ttl_value", skip_serializing_if = "Option::is_none")]
-    pub https_fake_ttl_value: Option<u8>,
+    #[arg(long = "tls-fake-ttl-value", value_parser = clap::value_parser!(u8).range(0..=255), help_heading = "HTTPS")]
+    #[serde(rename = "args.tls_fake_ttl_value", skip_serializing_if = "Option::is_none")]
+    pub tls_fake_ttl_value: Option<u8>,
 
-    /// Динамическое изменение отпечатка (fingerprint) путем повышения энтропии TLS-рукопожатия (GREASE & Padding): "true", "false".
-    #[arg(long = "https-greased-padding", help_heading = "HTTPS")]
-    #[serde(rename = "args.https_greased_padding", skip_serializing_if = "Option::is_none")]
-    pub https_greased_padding: Option<bool>,
+    /// Динамическое изменение отпечатка (fingerprint) путем повышения энтропии TLS-handshake (GREASE & Padding): "true", "false".
+    #[arg(long = "tls-greased-padding", help_heading = "HTTPS")]
+    #[serde(rename = "args.tls_greased_padding", skip_serializing_if = "Option::is_none")]
+    pub tls_greased_padding: Option<bool>,
 }
 
 impl From<RawCliArgs> for CliArgs {
@@ -150,10 +159,10 @@ impl From<RawCliArgs> for CliArgs {
             dns_provider: raw.dns_provider.unwrap_or(default.dns_provider),
             dns_qtype: raw.dns_qtype.unwrap_or(default.dns_qtype),
             http_split_mode: raw.http_split_mode.unwrap_or(default.http_split_mode),
-            https_split_mode: raw.https_split_mode.unwrap_or(default.https_split_mode),
-            https_fake_ttl_mode: raw.https_fake_ttl_mode.unwrap_or(default.https_fake_ttl_mode),
-            https_fake_ttl_value: raw.https_fake_ttl_value.unwrap_or(default.https_fake_ttl_value),
-            https_greased_padding: raw.https_greased_padding.unwrap_or(default.https_greased_padding),
+            tls_split_mode: raw.tls_split_mode.unwrap_or(default.tls_split_mode),
+            tls_fake_ttl_mode: raw.tls_fake_ttl_mode.unwrap_or(default.tls_fake_ttl_mode),
+            tls_fake_ttl_value: raw.tls_fake_ttl_value.unwrap_or(default.tls_fake_ttl_value),
+            tls_greased_padding: raw.tls_greased_padding.unwrap_or(default.tls_greased_padding),
         }
     }
 }
@@ -167,11 +176,11 @@ pub struct CliArgs {
     pub dns_mode: DnsMode,
     pub dns_provider: DnsProvider,
     pub dns_qtype: DnsQType,
-    pub http_split_mode: SplitMode,
-    pub https_split_mode: SplitMode,
-    pub https_fake_ttl_mode: TtlStrategy,
-    pub https_fake_ttl_value: u8,
-    pub https_greased_padding: bool,
+    pub http_split_mode: HttpSplitMode,
+    pub tls_split_mode: TlsSplitMode,
+    pub tls_fake_ttl_mode: TtlStrategy,
+    pub tls_fake_ttl_value: u8,
+    pub tls_greased_padding: bool,
 }
 
 impl Default for CliArgs {
@@ -184,11 +193,11 @@ impl Default for CliArgs {
             dns_mode: DnsMode::System,
             dns_provider: DnsProvider::Google,
             dns_qtype: DnsQType::Ipv4,
-            http_split_mode: SplitMode::None,
-            https_split_mode: SplitMode::None,
-            https_fake_ttl_mode: TtlStrategy::None,
-            https_fake_ttl_value: 0,
-            https_greased_padding: false,
+            http_split_mode: HttpSplitMode::None,
+            tls_split_mode: TlsSplitMode::None,
+            tls_fake_ttl_mode: TtlStrategy::None,
+            tls_fake_ttl_value: 0,
+            tls_greased_padding: false,
         }
     }
 }
@@ -214,7 +223,7 @@ impl Default for KeepaliveConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TlsFragmentationConfig {
+pub struct TlsFragmentationSniConfig {
     /// Jitter для первого фрагмента (мс).
     pub first_jitter_ms: (u64, u64),
     /// Jitter для критической зоны SNI (мс).
@@ -225,13 +234,30 @@ pub struct TlsFragmentationConfig {
     pub chunk_size: (usize, usize),
 }
 
-impl Default for TlsFragmentationConfig {
+impl Default for TlsFragmentationSniConfig {
     fn default() -> Self {
         Self {
-            first_jitter_ms: (1, 5),
+            first_jitter_ms: (1, 8),
             chunk_jitter_ms: (1, 5),
             sni_offset: (1, 5),
-            chunk_size: (1, 8),
+            chunk_size: (1, 6),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TlsFragmentationRandomConfig {
+    /// Jitter для чанков (мс).
+    pub chunk_jitter_ms: (u64, u64),
+    /// Диапазон размеров чанков (байт).
+    pub chunk_size: (usize, usize),
+}
+
+impl Default for TlsFragmentationRandomConfig {
+    fn default() -> Self {
+        Self {
+            chunk_jitter_ms: (1, 5),
+            chunk_size: (15, 55),
         }
     }
 }
@@ -310,10 +336,12 @@ pub struct EngineConfig {
     pub shutdown_grace_period_secs: u64,
     /// Настройки TCP Keepalive.
     pub keepalive: KeepaliveConfig,
-    /// Настройки фрагментации TLS-ClientHello.
-    pub tls_fragmentation: TlsFragmentationConfig,
     /// Настройки фрагментации HTTP-headers.
     pub http_fragmentation: HttpFragmentationConfig,
+    /// Настройки SNI фрагментации TLS-ClientHello.
+    pub tls_fragmentation_sni: TlsFragmentationSniConfig,
+    /// Настройки Random фрагментации TLS-ClientHello.
+    pub tls_fragmentation_random: TlsFragmentationRandomConfig,
     /// Настройки формирования TLS-ClientHello.
     pub tls_client_hello_shaping: TlsClientHelloShapingConfig,
 }
@@ -328,8 +356,9 @@ impl Default for EngineConfig {
             max_session_duration_secs: 300,
             shutdown_grace_period_secs: 10,
             keepalive: KeepaliveConfig::default(),
-            tls_fragmentation: TlsFragmentationConfig::default(),
             http_fragmentation: HttpFragmentationConfig::default(),
+            tls_fragmentation_sni: TlsFragmentationSniConfig::default(),
+            tls_fragmentation_random: TlsFragmentationRandomConfig::default(),
             tls_client_hello_shaping: TlsClientHelloShapingConfig::default(),
         }
     }

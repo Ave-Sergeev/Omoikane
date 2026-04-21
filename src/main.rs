@@ -2,7 +2,7 @@ use crate::{
     dns::DnsResolver,
     network_manager::NetworkManager,
     proxy::ProxyHandler,
-    settings::{CliArgs, LogLevel, Settings, SplitMode, TtlStrategy},
+    settings::{CliArgs, LogLevel, Settings, TlsSplitMode, TtlStrategy},
 };
 use colored::{Color, Colorize};
 use env_logger::Builder;
@@ -171,15 +171,15 @@ fn print_app_info(args: &CliArgs) {
     }
 
     // Определяем отображение значения TTL более надежным способом
-    let greased_padding_display = if args.https_greased_padding { "True" } else { "False" };
-    let (fake_ttl_mode_display, fake_ttl_value_display) = if matches!(args.https_split_mode, SplitMode::None) {
+    let greased_padding_display = if args.tls_greased_padding { "True" } else { "False" };
+    let (fake_ttl_mode_display, fake_ttl_value_display) = if matches!(args.tls_split_mode, TlsSplitMode::None) {
         ("N/A".to_string(), "N/A".to_string())
     } else {
-        let mode = format!("{:?}", args.https_fake_ttl_mode);
-        let value = if matches!(args.https_fake_ttl_mode, TtlStrategy::None) {
+        let mode = format!("{:?}", args.tls_fake_ttl_mode);
+        let value = if matches!(args.tls_fake_ttl_mode, TtlStrategy::None) {
             "N/A".to_string()
         } else {
-            args.https_fake_ttl_value.to_string()
+            args.tls_fake_ttl_value.to_string()
         };
 
         (mode, value)
@@ -195,8 +195,8 @@ fn print_app_info(args: &CliArgs) {
     println!("  • {:<16} : {:?}", "PROVIDER", args.dns_provider);
     println!("HTTP:");
     println!("  • {:<16} : {:?}", "SPLIT MODE", args.http_split_mode);
-    println!("HTTPS:");
-    println!("  • {:<16} : {:?}", "SPLIT MODE", args.https_split_mode);
+    println!("HTTPS (TLS):");
+    println!("  • {:<16} : {:?}", "SPLIT MODE", args.tls_split_mode);
     println!("  • {:<16} : {}", "FAKE TTL MODE", fake_ttl_mode_display);
     println!("  • {:<16} : {}", "FAKE TTL VALUE", fake_ttl_value_display);
     println!("  • {:<16} : {}", "GREASED PADDING", greased_padding_display);

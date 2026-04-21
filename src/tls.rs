@@ -1,10 +1,11 @@
 use crate::fingerprint::TlsFingerprint;
 use crate::rand::SmallRng;
-use crate::settings::{CliArgs, TlsClientHelloShapingConfig, TlsFragmentationConfig, TtlStrategy};
+use crate::settings::{CliArgs, EngineConfig, TlsClientHelloShapingConfig, TlsSplitMode, TtlStrategy};
 use log::trace;
 use socket2::SockRef;
 use std::io;
 use std::net::SocketAddr;
+use std::ops::Range;
 use thiserror::Error;
 use tls_parser::{TlsExtension, TlsMessage, TlsMessageHandshake, parse_tls_extensions, parse_tls_plaintext};
 use tokio::io::AsyncRead;
@@ -113,10 +114,10 @@ impl TlsMangler {
     }
 
     /// Фрагментация и отправка TLS-ClientHello + TTL-Limited Injection
-    pub async fn fragment_handshake(
+    pub async fn tls_fragmentation(
         rng: &mut SmallRng,
         args: &CliArgs,
-        config: &TlsFragmentationConfig,
+        config: &EngineConfig,
         target: &mut TcpStream,
         data: &[u8],
     ) -> Result<(), TlsManglerError> {
@@ -128,70 +129,111 @@ impl TlsMangler {
             && data[1] == 0x03
             && let Ok((host, sni_range)) = Self::find_sni_with_range(data)
         {
-            trace!("Fragmenting SNI for: [{host}] at range {sni_range:?}");
             let mut current_pos = 0;
             let total_len = data.len();
 
-            let (rand_jitter, rand_sni_offset) = (
-                rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
-                rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
-            );
-
-            match args.https_fake_ttl_mode {
-                TtlStrategy::None => {
-                    trace!("[{host}] TTL-Limited Injection skipped (Mode: None)");
-                }
+            match args.tls_fake_ttl_mode {
                 TtlStrategy::Custom => {
-                    let ttl_to_use = u32::from(args.https_fake_ttl_value);
-
+                    let ttl_to_use = u32::from(args.tls_fake_ttl_value);
                     Self::inject_ttl_limited_packet(target, &data[0..5], ttl_to_use).await?;
                     current_pos = 5;
                     trace!("[{host}] TTL-Limited Injection executed (TTL={ttl_to_use})");
                 }
+                TtlStrategy::None => {
+                    trace!("[{host}] TTL-Limited Injection skipped (FakeTtlMode: None)");
+                }
             }
 
-            // Определяем границы критической зоны вокруг SNI для фрагментации
-            let mut min_critical_zone = sni_range.start.saturating_sub(rand_sni_offset).max(current_pos);
-            let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_sni_offset);
+            match args.tls_split_mode {
+                TlsSplitMode::None => {
+                    trace!("Sending remaining data as-is (SplitMode: None)");
+                    target.write_all(&data[current_pos..]).await?;
+                }
+                TlsSplitMode::Sni => {
+                    trace!("Start fragmenting [{host}] using `SNI strategy` at range {sni_range:?}");
+                    let config = &config.tls_fragmentation_sni;
 
-            // Отправляем данные от заголовка до начала критической зоны SNI
-            if min_critical_zone > current_pos {
-                target.write_all(&data[current_pos..min_critical_zone]).await?;
-                target.flush().await?;
-                tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
-            }
+                    let (rand_jitter, rand_sni_offset) = (
+                        rng.gen_range_u64(config.first_jitter_ms.0, config.first_jitter_ms.1),
+                        rng.gen_range_usize(config.sni_offset.0, config.sni_offset.1),
+                    );
 
-            // Фрагментируем критическую зону (SNI + окрестности)
-            while min_critical_zone < max_critical_zone {
-                let min_size = config.chunk_size.0.max(1);
-                let max_size = config.chunk_size.1.max(min_size);
-                let current_rand_chunk_size = rng.gen_range_usize(min_size, max_size);
+                    // Определяем границы критической зоны вокруг SNI для фрагментации
+                    let min_critical_zone = sni_range.start.saturating_sub(rand_sni_offset).max(current_pos);
+                    let max_critical_zone = std::cmp::min(total_len, sni_range.end + rand_sni_offset);
 
-                let end_pos = std::cmp::min(min_critical_zone + current_rand_chunk_size, max_critical_zone);
+                    // Отправляем данные от заголовка до начала критической зоны SNI
+                    if min_critical_zone > current_pos {
+                        target.write_all(&data[current_pos..min_critical_zone]).await?;
+                        target.flush().await?;
+                        tokio::time::sleep(std::time::Duration::from_millis(rand_jitter)).await;
+                    }
 
-                target.write_all(&data[min_critical_zone..end_pos]).await?;
-                target.flush().await?;
+                    // Фрагментируем критическую зону (SNI + окрестности) и отправляем
+                    Self::write_in_chunks(
+                        rng,
+                        target,
+                        &data[min_critical_zone..max_critical_zone],
+                        config.chunk_size,
+                        config.chunk_jitter_ms,
+                    )
+                    .await?;
 
-                // Jitter для борьбы с тайм-анализом
-                let jitter = rng.gen_range_u64(config.chunk_jitter_ms.0, config.chunk_jitter_ms.1);
-                tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+                    // Досылаем остаток TLS-пакета после критической зоны одним фрагментом
+                    if max_critical_zone < total_len {
+                        target.write_all(&data[max_critical_zone..]).await?;
+                        target.flush().await?;
+                    }
+                }
+                TlsSplitMode::Random => {
+                    trace!("Start fragmenting [{host}] using `Random` strategy`");
+                    let config = &config.tls_fragmentation_random;
 
-                min_critical_zone = end_pos;
-            }
-
-            // Досылаем остаток TLS-пакета после критической зоны одним фрагментом
-            if max_critical_zone < total_len {
-                target.write_all(&data[max_critical_zone..]).await?;
-                target.flush().await?;
+                    // Фрагментируем и отправляем все данные (header отправлен ранее)
+                    Self::write_in_chunks(rng, target, &data[current_pos..], config.chunk_size, config.chunk_jitter_ms)
+                        .await?;
+                }
             }
 
             return Ok(());
         }
 
         // Отправляем без изменений если это не TLS-handshake, или SNI не найден
-        trace!("Skipping handshake fragmentation: SNI not found");
+        trace!("Skipping fragmentation: SNI missing or non-handshake data");
         target.write_all(data).await?;
         target.flush().await?;
+
+        Ok(())
+    }
+
+    /// Логика фрагментации на чанки, и их отправка
+    async fn write_in_chunks(
+        rng: &mut SmallRng,
+        target: &mut TcpStream,
+        data: &[u8],
+        chunk_size: (usize, usize),
+        jitter_range: (u64, u64),
+    ) -> Result<(), TlsManglerError> {
+        let mut current_position = 0;
+        let end_position = data.len();
+
+        while current_position < end_position {
+            let min_size = chunk_size.0.max(1);
+            let max_size = chunk_size.1.max(min_size);
+            let current_rand_chunk_size = rng.gen_range_usize(min_size, max_size);
+            let end_pos = std::cmp::min(current_position + current_rand_chunk_size, end_position);
+
+            target.write_all(&data[current_position..end_pos]).await?;
+            target.flush().await?;
+
+            // Jitter для борьбы с тайм-анализом
+            let jitter = rng.gen_range_u64(jitter_range.0, jitter_range.1);
+            if jitter > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+            }
+
+            current_position = end_pos;
+        }
 
         Ok(())
     }
@@ -210,7 +252,7 @@ impl TlsMangler {
     }
 
     /// Поиск диапазон байт, где лежит SNI внутри TLS-ClientHello
-    fn find_sni_with_range(data: &[u8]) -> Result<(String, std::ops::Range<usize>), TlsManglerError> {
+    fn find_sni_with_range(data: &[u8]) -> Result<(String, Range<usize>), TlsManglerError> {
         let (_, record) = parse_tls_plaintext(data).map_err(|_| TlsManglerError::SniParseError)?;
 
         for msg in record.msg {

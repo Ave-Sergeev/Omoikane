@@ -1,6 +1,6 @@
 [package]
 name = "omoikane"
-version = "1.4.3"
+version = "1.4.4"
 authors = ["Ave-Sergeev"]
 license = "Apache-2.0"
 edition = "2024"

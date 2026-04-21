@@ -1,7 +1,8 @@
 use crate::http::HttpMangler;
 use crate::rand::SmallRng;
+use crate::settings::HttpSplitMode;
 use crate::{AppState, ProxyTarget};
-use crate::{dns::DnsError, settings::SplitMode, tls::TlsMangler};
+use crate::{dns::DnsError, settings::TlsSplitMode, tls::TlsMangler};
 use log::{debug, trace};
 use std::io::ErrorKind;
 use std::sync::Arc;
@@ -109,34 +110,27 @@ impl ProxyHandler {
                         details: err.to_string(),
                     })?;
 
-            if args.https_greased_padding {
+            if args.tls_greased_padding {
                 // Подготавливаем данные TLS (пытаемся модифицировать GREASE & Padding)
                 tls_record = TlsMangler::prepare_tls_data(&mut rng, &tls_record, &engine.tls_client_hello_shaping);
             }
 
-            match args.https_split_mode {
-                SplitMode::None => {
+            match args.tls_split_mode {
+                TlsSplitMode::None => {
                     stream_out.write_all(&tls_record).await?;
                 }
-                SplitMode::Fragment => {
-                    // Фрагментируем с учетом выбранной стратегии TTL и отправляем TLS-ClientHello
-                    TlsMangler::fragment_handshake(
-                        &mut rng,
-                        args,
-                        &engine.tls_fragmentation,
-                        &mut stream_out,
-                        &tls_record,
-                    )
-                    .await
-                    .map_err(|err| ProxyError::Manipulation {
-                        stage: "TLS Fragment",
-                        details: err.to_string(),
-                    })?;
+                TlsSplitMode::Sni | TlsSplitMode::Random => {
+                    TlsMangler::tls_fragmentation(&mut rng, args, engine, &mut stream_out, &tls_record)
+                        .await
+                        .map_err(|err| ProxyError::Manipulation {
+                            stage: "TLS Fragment",
+                            details: err.to_string(),
+                        })?;
                 }
             }
         } else {
             match args.http_split_mode {
-                SplitMode::None => {
+                HttpSplitMode::None => {
                     stream_out
                         .write_all(&header_buffer)
                         .await
@@ -145,7 +139,7 @@ impl ProxyHandler {
                             source: err,
                         })?;
                 }
-                SplitMode::Fragment => {
+                HttpSplitMode::Fragment => {
                     // Модифицируем HTTP-headers
                     let modified_headers =
                         HttpMangler::modify_http_headers(&mut rng, &header_buffer).map_err(|err| {

@@ -87,11 +87,11 @@ Active Research & PoC 🦀
   - `--dns-provider` - Используемый провайдер для DoH/DoT: `google`, `cloudflare`, `quad9`. (По умолчанию: `google`)
 - `HTTP`
   - `--http-split-mode` - Фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
-- `HTTPS`
-  - `--https-split-mode` - Фрагментация TLS-ClientHello: `none`, `fragment`. (По умолчанию: `none`)
-  - `--https-fake-ttl-mode` - Стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
-  - `--https-fake-ttl-value` — Значение TTL для режима `custom`. (По умолчанию: `0`, диапазон `0-255`)
-  - `--https-greased-padding` - Динамическое изменение отпечатка (fingerprint) сессии путем повышения энтропии TLS-рукопожатия (GREASE & Padding): `true`, `false`. (По умолчанию: `false`) 
+- `HTTPS (TLS)`
+  - `--tls-split-mode` - Фрагментация TLS-ClientHello: `none`, `sni`, `random`. (По умолчанию: `none`)
+  - `--tls-fake-ttl-mode` - Стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
+  - `--tls-fake-ttl-value` — Значение TTL для режима `custom`. (По умолчанию: `0`, диапазон `0-255`)
+  - `--tls-greased-padding` - Динамическое изменение отпечатка (fingerprint) сессии путем повышения энтропии TLS-handshake (GREASE & Padding): `true`, `false`. (По умолчанию: `false`) 
 
 ### Примеры запуска в CLI
 
@@ -107,13 +107,13 @@ Active Research & PoC 🦀
     > ./<path_to_binary_file>
   
   Полная запись (явное указание параметров):  
-    > ./<path_to_binary_file> -i 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --https-split-mode none --https-fake-ttl-mode none
+    > ./<path_to_binary_file> -i 127.0.0.1 -p 8080 --dns-mode system --log-level info --http-split-mode none --tls-split-mode none --tls-fake-ttl-mode none
 
 - **Умеренный режим:**. Включает фрагментацию пакетов, Сloudflare DNS-over-TLS (IPv4) для обхода простых ограничений.
-  > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment
+  > ./<path_to_binary_file> --dns-mode dot --dns-provider cloudflare --http-split-mode fragment --tls-split-mode random
 
 - **Максимальный режим:**. Использование DNS-over-HTTPS (IPv4), фрагментации пакетов, кастомной подстройки TTL, изменение fingerprint.
-  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --https-split-mode fragment --https-fake-ttl-mode custom --https-fake-ttl-value 1 --https-greased-padding true
+  > ./<path_to_binary_file> --dns-mode doh --dns-provider cloudflare --http-split-mode fragment --tls-split-mode sni --tls-fake-ttl-mode custom --tls-fake-ttl-value 1 --tls-greased-padding true
 
 ### Детали реализации
 
