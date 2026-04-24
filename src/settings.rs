@@ -131,12 +131,12 @@ pub struct RawCliArgs {
     #[serde(rename = "args.tls_split_mode", skip_serializing_if = "Option::is_none")]
     pub tls_split_mode: Option<TlsSplitMode>,
 
-    /// Стратегия работы с `TTL` для фейк пакетов: "none", "custom".
+    /// Стратегия ограничения дистанции (TTL) для фейк-пакета: "none", "custom".
     #[arg(value_enum, long = "tls-fake-ttl-mode", help_heading = "HTTPS")]
     #[serde(rename = "args.tls_fake_ttl_mode", skip_serializing_if = "Option::is_none")]
     pub tls_fake_ttl_mode: Option<TtlStrategy>,
 
-    /// Конкретное значение `TTL` (для стратегии "custom").
+    /// Количество хопов (прыжков), через которое фейк-пакет будет отброшен (для стратегии "custom").
     #[arg(long = "tls-fake-ttl-value", value_parser = clap::value_parser!(u8).range(0..=255), help_heading = "HTTPS")]
     #[serde(rename = "args.tls_fake_ttl_value", skip_serializing_if = "Option::is_none")]
     pub tls_fake_ttl_value: Option<u8>,
