@@ -89,8 +89,8 @@ Active Research & PoC 🦀
   - `--http-split-mode` - Фрагментация HTTP-request: `none`, `fragment`. (По умолчанию: `none`)
 - `HTTPS (TLS)`
   - `--tls-split-mode` - Фрагментация TLS-ClientHello: `none`, `sni`, `random`. (По умолчанию: `none`)
-  - `--tls-fake-ttl-mode` - Стратегия работы с TTL для фейк-пакетов: `none`, `custom`. (По умолчанию: `none`)
-  - `--tls-fake-ttl-value` — Значение TTL для режима `custom`. (По умолчанию: `0`, диапазон `0-255`)
+  - `--tls-fake-ttl-mode` - Стратегия ограничения дистанции (TTL) для фейк-пакета: `none`, `custom`. (По умолчанию: `none`)
+  - `--tls-fake-ttl-value` —  Количество хопов (прыжков) для стратегии `custom`, через которое фейк-пакет будет отброшен. (По умолчанию: `0`, диапазон `0-255`)
   - `--tls-greased-padding` - Динамическое изменение отпечатка (fingerprint) сессии путем повышения энтропии TLS-handshake (GREASE & Padding): `true`, `false`. (По умолчанию: `false`) 
 
 ### Примеры запуска в CLI

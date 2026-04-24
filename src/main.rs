@@ -36,7 +36,6 @@ pub enum ProxyTarget {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Загрузка конфигурации (CliArgs, YAML)
     let settings = Settings::new()?;
 
     let args = settings.args.clone();
@@ -45,22 +44,16 @@ async fn main() -> anyhow::Result<()> {
     let session_duration = Duration::from_secs(engine.max_session_duration_secs);
     let shutdown_timeout = Duration::from_secs(engine.shutdown_grace_period_secs);
 
-    // Инициализация Logger
     init_logger(&args.log_level);
 
-    // Отрисовка баннера и текущих настроек в терминале
-    print_app_info(&args);
+    display_app_info(&args);
 
-    // Применение сетевых настроек на уровне ОС
     NetworkManager::set_proxy_mode(&args, true)?;
 
-    // Инициализация DNS-resolver
     let resolver = DnsResolver::new(&args.dns_mode, &args.dns_qtype, &args.dns_provider);
 
-    // Создание Shared-State приложения
     let app_state = Arc::new(AppState { settings, resolver });
 
-    // Инициализация TCP-listener для обработки входящих подключений
     let addr = format!("{}:{}", &app_state.settings.args.ip, &app_state.settings.args.port);
     let listener = TcpListener::bind(addr).await?;
     info!("Listener is running on port: {}", &app_state.settings.args.port);
@@ -126,7 +119,6 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("All connections closed. Shutdown complete.");
 
-    // Откат сетевых настроек ОС в исходное состояние
     NetworkManager::set_proxy_mode(&args, false)?;
 
     Ok(())
@@ -149,7 +141,7 @@ fn init_logger(log_level: &LogLevel) {
 }
 
 /// Отрисовка баннера и текущих настроек в терминале
-fn print_app_info(args: &CliArgs) {
+fn display_app_info(args: &CliArgs) {
     if args.silent {
         return;
     }

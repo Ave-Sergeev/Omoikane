@@ -90,8 +90,8 @@ If an argument is not explicitly provided, values from config.yaml or default se
   - `--http-split-mode` - HTTP request fragmentation: `none`, `fragment`. (Default: `none`)
 - `HTTPS (TLS)`
   - `--tls-split-mode` - TLS ClientHello fragmentation: `none`, `sni`, `random`. (Default: `none`)
-  - `--tls-fake-ttl-mode` - TTL strategy for fake packets: `none`, `custom`. (Default: `none`)
-  - `--tls-fake-ttl-value` - TTL value for `custom` mode. (Default: `0`, range: `1-255`)
+  - `--tls-fake-ttl-mode` - Distance limiting strategy (TTL) for fake packets: `none`, `custom`. (Default: `none`)
+  - `--tls-fake-ttl-value` - The number of hops for the 'custom' strategy after which the fake packet will be dropped. (Default: `0`, range: `0-255`)
   - `--tls-greased-padding` - Dynamic modification of the session fingerprint by increasing TLS handshake entropy (GREASE & Padding): `true`, `false`. (Default: `false`)
 
 ### CLI Usage Examples
