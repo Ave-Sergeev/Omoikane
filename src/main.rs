@@ -1,6 +1,7 @@
 use crate::{
+    adapter::output::PlatformProxyAdapter,
+    application::port::output::proxy_manager::ProxyManagerPort,
     dns::DnsResolver,
-    network_manager::NetworkManager,
     proxy::ProxyHandler,
     settings::{CliArgs, LogLevel, Settings, TlsSplitMode, TtlStrategy},
 };
@@ -14,11 +15,12 @@ use tokio::sync::Semaphore;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+mod adapter;
+mod application;
 mod dns;
 mod fingerprint;
 mod http;
 mod macros;
-mod network_manager;
 mod proxy;
 mod rand;
 mod settings;
@@ -46,9 +48,11 @@ async fn main() -> anyhow::Result<()> {
 
     init_logger(&args.log_level);
 
+    let proxy_manager: Arc<dyn ProxyManagerPort> = Arc::new(PlatformProxyAdapter);
+
     display_app_info(&args);
 
-    NetworkManager::set_proxy_mode(&args, true)?;
+    proxy_manager.set_system_proxy(true, &args.ip, args.port)?;
 
     let resolver = DnsResolver::new(&args.dns_mode, &args.dns_qtype, &args.dns_provider);
 
@@ -119,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
     }
     info!("All connections closed. Shutdown complete.");
 
-    NetworkManager::set_proxy_mode(&args, false)?;
+    proxy_manager.set_system_proxy(true, &args.ip, args.port)?;
 
     Ok(())
 }
